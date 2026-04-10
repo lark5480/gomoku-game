@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(pytest:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(curl * | bash)"
+    ]
+  },
+  "enabledPlugins": {
+    "formatter@anthropic-tools": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs'); const cp=require('child_process'); try { const d=JSON.parse(fs.readFileSync(0,'utf8')); const f=d.tool_response?.filePath || d.tool_input?.file_path; if (f) cp.spawnSync('npx', ['prettier', '--write', f], { stdio: 'inherit' }); } catch (e) { }\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

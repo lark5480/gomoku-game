@@ -1,0 +1,18 @@
+{
+  "name": "claudecodedemo1",
+  "version": "1.0.0",
+  "description": "一款使用 HTML5 Canvas 和 JavaScript 实现的经典策略棋盘游戏。两名玩家轮流在 15×15 的棋盘上放置棋子，目标是首先在水平、垂直或对角线上连成五个棋子。",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "format": "prettier --write ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
+}
