@@ -28,27 +28,46 @@
 ## 项目结构
 
 ```
-├── index.html          # 主HTML文件
+├── index.html              # 主HTML文件
 ├── css/
-│   └── style.css      # 游戏所有样式
-├── js/
-│   ├── utils.js       # 工具函数（坐标转换、验证）
-│   ├── board.js       # 游戏逻辑和状态管理
-│   └── game.js        # 主游戏控制器和Canvas渲染
-├── server.js          # 本地测试的简单HTTP服务器
-└── README.md          # 本文件
+│   └── style.css          # 游戏所有样式（响应式设计）
+├── js/                    # 核心JavaScript模块
+│   ├── utils.js           # 工具函数（坐标转换、验证、常量）
+│   ├── board.js           # 游戏逻辑（Board类、胜利检测、移动验证）
+│   └── game.js            # 游戏控制器（Canvas渲染、用户交互、动画）
+├── tests/                 # 测试文件
+│   └── test.mjs          # 棋盘逻辑测试套件
+├── .claude/              # Claude Code配置
+│   ├── commands/         # 自定义命令（review、fix-issue等）
+│   └── rules/            # 代码风格、测试、API约定规则
+├── server.js             # 静态文件服务器（端口8000）
+├── package.json          # npm配置（type: "module"）
+├── package-lock.json     # 依赖锁文件
+├── .prettierrc.json      # Prettier代码格式化配置
+├── .prettierignore       # Prettier忽略配置
+├── .gitignore           # Git忽略配置
+├── CLAUDE.md            # Claude Code项目指导文档
+└── README.md            # 本文件
 ```
 
 ## 安装和运行
 
+### 前置条件
+
+- **Node.js**: 版本 14.0.0 或更高（支持 ES6 模块）
+
 ### 快速开始
 
 1. **克隆或下载** 项目文件
-2. **启动本地服务器**:
+2. **安装依赖**（用于代码格式化）:
    ```bash
-   node server.js
+   npm install
    ```
-3. **打开浏览器** 并访问:
+3. **启动本地服务器**:
+   ```bash
+   npm start
+   ```
+4. **打开浏览器** 并访问:
    ```
    http://localhost:8000/
    ```
@@ -87,7 +106,8 @@ python -m http.server 8000
 
 ### 依赖项
 
-- **无**: 纯 HTML5、CSS3 和 JavaScript (ES6+)
+- **运行时依赖**: 纯 HTML5、CSS3 和 JavaScript (ES6+)，无外部依赖
+- **开发依赖**: Prettier 用于代码格式化（通过 `npm install` 安装）
 - **Font Awesome**: UI元素的图标（从CDN加载）
 - **无框架**: 轻量级且快速
 
@@ -106,7 +126,23 @@ python -m http.server 8000
 
 此项目使用原生ES6模块，因此无需构建步骤。所有文件都可以直接运行。
 
+### 使用 Claude Code 开发
+
+项目包含 `.claude/` 目录，配置了 Claude Code 的自定义命令和规则：
+
+- `review.md` - 代码审查清单
+- `fix-issue.md` - GitHub issue 修复流程
+- 代码风格规则文件（`code-style.md`, `testing.md`, `api-conventions.md`）
+
 ### 代码风格
+
+项目使用 Prettier 进行代码格式化：
+
+```bash
+npm run format
+```
+
+代码风格约定：
 
 - 使用模块导入/导出的ES6+ JavaScript
 - 游戏组件使用类
@@ -115,7 +151,15 @@ python -m http.server 8000
 
 ### 测试
 
-手动测试包括:
+项目包含自动测试和手动测试：
+
+**自动测试**（运行游戏逻辑测试）：
+
+```bash
+node tests/test.mjs
+```
+
+**手动测试**包括：
 
 1. 基本游戏流程
 2. 获胜条件（水平、垂直、对角线）
@@ -149,7 +193,15 @@ _（实际项目中会添加截图）_
 
 ## 许可证
 
-此项目可用于教育和个人用途。可以自由修改和分发，但需注明出处。
+本项目基于 **ISC 许可证** 开源。详见 [package.json](package.json) 中的许可证信息。
+
+**基本条款**:
+
+- 可以自由使用、复制、修改、分发本软件
+- 无需提供担保
+- 保留原作者的版权声明
+
+完整的许可证文本可在项目中查找或参考标准的 ISC 许可证。
 
 ## 贡献
 
