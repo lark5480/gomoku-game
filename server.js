@@ -17,6 +17,13 @@ const MIME_TYPES = {
 const server = http.createServer((req, res) => {
   console.log(`${req.method} ${req.url}`);
 
+  // Only allow GET and HEAD requests
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { 'Allow': 'GET, HEAD' });
+    res.end('Method Not Allowed');
+    return;
+  }
+
   // Handle root path
   let filePath = "." + req.url;
   if (filePath === "./") {

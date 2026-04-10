@@ -39,15 +39,37 @@ function errorLog(...args) {
 class GomokuGame {
   constructor() {
     this.canvas = document.getElementById("gameBoard");
+    if (!this.canvas || !(this.canvas instanceof HTMLCanvasElement)) {
+      throw new Error("游戏画布元素未找到或类型错误");
+    }
     this.ctx = this.canvas.getContext("2d");
     this.board = new Board();
 
     // UI elements
     this.currentPlayerElement = document.getElementById("currentPlayer");
+    if (!this.currentPlayerElement) {
+      throw new Error("当前玩家显示元素未找到");
+    }
+
     this.gameStatusElement = document.getElementById("gameStatus");
+    if (!this.gameStatusElement) {
+      throw new Error("游戏状态显示元素未找到");
+    }
+
     this.restartBtn = document.getElementById("restartBtn");
+    if (!this.restartBtn) {
+      throw new Error("重新开始按钮未找到");
+    }
+
     this.undoBtn = document.getElementById("undoBtn");
+    if (!this.undoBtn) {
+      throw new Error("撤销按钮未找到");
+    }
+
     this.hintBtn = document.getElementById("hintBtn");
+    if (!this.hintBtn) {
+      throw new Error("提示按钮未找到");
+    }
 
     // Game state
     this.isAnimating = false;
