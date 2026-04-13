@@ -1,4 +1,9 @@
-# Fix GitHub Issue
+---
+allowed-tools: Read, Grep, Glob, Edit, Bash
+argument-hint: [issue编号]
+description: 修复 GitHub Issue
+model: claude-haiku-4-5-20251001
+---
 
 给定 Issue 编号 $ARGUMENTS，请：
 
@@ -7,4 +12,3 @@
 3. 实现最小化修复方案
 4. 编写对应的单元测试
 5. 更新 CHANGELOG.md
-

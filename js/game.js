@@ -6,12 +6,8 @@
 import { Board, GameState, Player } from "./board.js";
 import {
   screenToBoard,
-  boardToScreen,
-  formatPlayerName,
-  clamp,
   CELL_SIZE,
   BOARD_PADDING,
-  STONE_RADIUS,
   BOARD_SIZE,
 } from "./utils.js";
 
@@ -23,17 +19,9 @@ const IS_DEV = false; // Set to false for production, true for development
  * @param {...any} args - Arguments to log
  */
 function debugLog(...args) {
-    if (IS_DEV) {
-        console.log(...args);
-    }
-}
-
-/**
- * Error logging utility (always logs)
- * @param {...any} args - Arguments to log
- */
-function errorLog(...args) {
-    console.error(...args);
+  if (IS_DEV) {
+    console.log(...args);
+  }
 }
 
 class GomokuGame {
@@ -478,8 +466,16 @@ class GomokuGame {
     const radius = cellSize * 0.25;
 
     ctx.save();
+    this.drawHintGlow(x, y, radius, ctx);
+    this.drawHintInnerCircle(x, y, radius, ctx);
+    this.drawHintPulse(x, y, radius, ctx);
+    ctx.restore();
+  }
 
-    // Draw outer glow effect
+  /**
+   * Draw outer glow for hint
+   */
+  drawHintGlow(x, y, radius, ctx) {
     const gradient = ctx.createRadialGradient(
       x,
       y,
@@ -490,11 +486,11 @@ class GomokuGame {
     );
 
     if (this.board.getCurrentPlayer() === Player.BLACK) {
-      gradient.addColorStop(0, "rgba(255, 215, 0, 0.8)"); // Gold
+      gradient.addColorStop(0, "rgba(255, 215, 0, 0.8)");
       gradient.addColorStop(0.5, "rgba(255, 215, 0, 0.4)");
       gradient.addColorStop(1, "rgba(255, 215, 0, 0)");
     } else {
-      gradient.addColorStop(0, "rgba(0, 191, 255, 0.8)"); // Deep sky blue
+      gradient.addColorStop(0, "rgba(0, 191, 255, 0.8)");
       gradient.addColorStop(0.5, "rgba(0, 191, 255, 0.4)");
       gradient.addColorStop(1, "rgba(0, 191, 255, 0)");
     }
@@ -503,8 +499,12 @@ class GomokuGame {
     ctx.beginPath();
     ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
     ctx.fill();
+  }
 
-    // Draw inner solid circle
+  /**
+   * Draw inner circle for hint
+   */
+  drawHintInnerCircle(x, y, radius, ctx) {
     ctx.fillStyle =
       this.board.getCurrentPlayer() === Player.BLACK
         ? "rgba(255, 215, 0, 0.8)"
@@ -512,8 +512,12 @@ class GomokuGame {
     ctx.beginPath();
     ctx.arc(x, y, radius * 0.8, 0, Math.PI * 2);
     ctx.fill();
+  }
 
-    // Draw pulsing effect for hint
+  /**
+   * Draw pulsing effect for hint
+   */
+  drawHintPulse(x, y, radius, ctx) {
     ctx.strokeStyle =
       this.board.getCurrentPlayer() === Player.BLACK
         ? "rgba(255, 215, 0, 1)"
@@ -523,8 +527,6 @@ class GomokuGame {
     ctx.beginPath();
     ctx.arc(x, y, pulseRadius, 0, Math.PI * 2);
     ctx.stroke();
-
-    ctx.restore();
   }
 
   /**
@@ -646,52 +648,71 @@ class GomokuGame {
    */
   findBestHintPosition() {
     debugLog("Finding best hint position");
-    const emptyPositions = [];
-
-    // First, collect all empty positions
-    for (let row = 0; row < BOARD_SIZE; row++) {
-      for (let col = 0; col < BOARD_SIZE; col++) {
-        if (this.board.getCell(row, col) === null) {
-          emptyPositions.push({ row, col, score: 0 });
-        }
-      }
-    }
+    const emptyPositions = this.collectEmptyPositions();
 
     if (emptyPositions.length === 0) return null;
 
-    // Score positions based on proximity to existing stones
+    // Score all positions
     for (const pos of emptyPositions) {
-      let score = 0;
-
-      // Check surrounding 3x3 area
-      for (let dr = -2; dr <= 2; dr++) {
-        for (let dc = -2; dc <= 2; dc++) {
-          const r = pos.row + dr;
-          const c = pos.col + dc;
-
-          if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
-            if (this.board.getCell(r, c) !== null) {
-              // The closer the stone, the higher the score
-              const distance = Math.sqrt(dr * dr + dc * dc);
-              score += 10 / (distance + 1);
-            }
-          }
-        }
-      }
-
-      // Bonus for center positions (better opening moves)
-      const center = BOARD_SIZE / 2;
-      const distanceFromCenter = Math.sqrt(
-        Math.pow(pos.row - center, 2) + Math.pow(pos.col - center, 2),
-      );
-      score += 20 / (distanceFromCenter + 1);
-
-      pos.score = score;
+      pos.score = this.scorePosition(pos);
     }
 
     // Return position with highest score
-    emptyPositions.sort((a, b) => b.score - a.score);
-    const bestPos = emptyPositions[0];
+    return this.selectBestPosition(emptyPositions);
+  }
+
+  /**
+   * Collect all empty positions on the board
+   */
+  collectEmptyPositions() {
+    const positions = [];
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        if (this.board.getCell(row, col) === null) {
+          positions.push({ row, col, score: 0 });
+        }
+      }
+    }
+    return positions;
+  }
+
+  /**
+   * Score a position based on proximity to existing stones and center
+   */
+  scorePosition(pos) {
+    let score = 0;
+
+    // Check surrounding area for existing stones
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        const r = pos.row + dr;
+        const c = pos.col + dc;
+
+        if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+          if (this.board.getCell(r, c) !== null) {
+            const distance = Math.sqrt(dr * dr + dc * dc);
+            score += 10 / (distance + 1);
+          }
+        }
+      }
+    }
+
+    // Bonus for center positions
+    const center = BOARD_SIZE / 2;
+    const distanceFromCenter = Math.sqrt(
+      Math.pow(pos.row - center, 2) + Math.pow(pos.col - center, 2),
+    );
+    score += 20 / (distanceFromCenter + 1);
+
+    return score;
+  }
+
+  /**
+   * Select the best position from scored positions
+   */
+  selectBestPosition(positions) {
+    positions.sort((a, b) => b.score - a.score);
+    const bestPos = positions[0];
     debugLog(
       "Best hint position found:",
       bestPos.row,
@@ -699,7 +720,7 @@ class GomokuGame {
       "with score:",
       bestPos.score,
     );
-    debugLog("Total empty positions:", emptyPositions.length);
+    debugLog("Total empty positions:", positions.length);
     return { row: bestPos.row, col: bestPos.col };
   }
 
@@ -734,8 +755,8 @@ class GomokuGame {
         return;
       }
 
-      // Redraw to update pulse animation
-      this.drawBoard();
+      // Only redraw hint area instead of entire board for performance
+      this.redrawHintArea();
 
       // Continue animation
       this.hintAnimationId = requestAnimationFrame(animate);
@@ -744,6 +765,49 @@ class GomokuGame {
     // Start animation loop
     this.hintAnimationId = requestAnimationFrame(animate);
     debugLog("Hint animation started with id:", this.hintAnimationId);
+  }
+
+  /**
+   * Redraw only the hint area for animation performance
+   */
+  redrawHintArea() {
+    if (!this.hintCell) return;
+
+    const { row, col } = this.hintCell;
+    const cellSize = this.cellSize;
+    const x = BOARD_PADDING + col * cellSize;
+    const y = BOARD_PADDING + row * cellSize;
+    const radius = cellSize * 0.25;
+
+    // Clear only the hint area
+    const clearRadius = radius * 3;
+    this.ctx.clearRect(
+      x - clearRadius,
+      y - clearRadius,
+      clearRadius * 2,
+      clearRadius * 2,
+    );
+
+    // Redraw grid lines that were cleared
+    this.ctx.strokeStyle = "#000000";
+    this.ctx.lineWidth = 1;
+
+    // Vertical line
+    this.ctx.beginPath();
+    this.ctx.moveTo(x, BOARD_PADDING);
+    this.ctx.lineTo(x, this.canvas.height - BOARD_PADDING);
+    this.ctx.stroke();
+
+    // Horizontal line
+    this.ctx.beginPath();
+    this.ctx.moveTo(BOARD_PADDING, y);
+    this.ctx.lineTo(this.canvas.width - BOARD_PADDING, y);
+    this.ctx.stroke();
+
+    // Redraw hint highlight
+    this.drawHintGlow(x, y, radius, this.ctx);
+    this.drawHintInnerCircle(x, y, radius, this.ctx);
+    this.drawHintPulse(x, y, radius, this.ctx);
   }
 
   /**
@@ -762,7 +826,7 @@ class GomokuGame {
 // Initialize game when DOM is loaded
 document.addEventListener("DOMContentLoaded", () => {
   const game = new GomokuGame();
-  console.log("Gomoku game initialized!");
+  debugLog("Gomoku game initialized!");
 
   // Make game accessible from console for debugging
   window.gomokuGame = game;
