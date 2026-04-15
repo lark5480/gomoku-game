@@ -95,3 +95,6 @@ out/
 CLAUDE.local.md
 .claude/settings.local.json
 CHANGELOG.md
+
+# OMC 运行时数据
+.omc/
