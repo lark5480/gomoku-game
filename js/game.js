@@ -4,6 +4,7 @@
  */
 
 import { Board, GameState, Player } from "./board.js";
+import { AIPlayer } from "./ai.js";
 import {
   screenToBoard,
   CELL_SIZE,
@@ -59,6 +60,14 @@ class GomokuGame {
       throw new Error("提示按钮未找到");
     }
 
+    // Start screen elements
+    this.startScreen = document.getElementById("startScreen");
+    this.pvpBtn = document.getElementById("pvpBtn");
+    this.aiBtn = document.getElementById("aiBtn");
+    this.startBtn = document.getElementById("startBtn");
+    this.difficultySelection = document.getElementById("difficultySelection");
+    this.gameModeDisplay = document.getElementById("gameMode");
+
     // Game state
     this.isAnimating = false;
     this.highlightedCell = null;
@@ -67,6 +76,12 @@ class GomokuGame {
     this.hintTimeout = null;
     this.hintAnimationId = null;
     this.cellSize = null;
+
+    // AI game mode
+    this.gameMode = "pvp";
+    this.aiDifficulty = "medium";
+    this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
+    this.aiPlayerColor = Player.WHITE; // AI plays as WHITE (player plays as BLACK)
 
     // Initialize
     this.init();
@@ -127,6 +142,73 @@ class GomokuGame {
     this.restartBtn.addEventListener("click", () => this.restartGame());
     this.undoBtn.addEventListener("click", () => this.undoMove());
     this.hintBtn.addEventListener("click", () => this.showHint());
+
+    // Start screen buttons
+    this.pvpBtn.addEventListener("click", () => this.handleModeSelect("pvp"));
+    this.aiBtn.addEventListener("click", () => this.handleModeSelect("ai"));
+    this.startBtn.addEventListener("click", () => this.startGame());
+
+    // Difficulty buttons
+    const diffButtons = this.difficultySelection.querySelectorAll(".diff-btn");
+    diffButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const difficulty = btn.dataset.difficulty;
+        this.handleDifficultySelect(difficulty);
+      });
+    });
+  }
+
+  /**
+   * Handle mode selection from start screen
+   * @param {string} mode - 'pvp' or 'ai'
+   */
+  handleModeSelect(mode) {
+    this.setGameMode(mode);
+
+    // Update UI
+    this.pvpBtn.classList.toggle("selected", mode === "pvp");
+    this.aiBtn.classList.toggle("selected", mode === "ai");
+
+    // Show/hide difficulty selection
+    this.difficultySelection.classList.toggle("visible", mode === "ai");
+  }
+
+  /**
+   * Handle difficulty selection
+   * @param {string} difficulty - 'easy', 'medium', or 'hard'
+   */
+  handleDifficultySelect(difficulty) {
+    this.setAIDifficulty(difficulty);
+
+    // Update UI
+    const diffButtons = this.difficultySelection.querySelectorAll(".diff-btn");
+    diffButtons.forEach((btn) => {
+      btn.classList.toggle("selected", btn.dataset.difficulty === difficulty);
+    });
+  }
+
+  /**
+   * Start the game
+   */
+  startGame() {
+    // Hide start screen
+    if (this.startScreen) {
+      this.startScreen.style.display = "none";
+    }
+
+    // Update game mode display
+    if (this.gameModeDisplay) {
+      this.gameModeDisplay.textContent =
+        this.gameMode === "ai" ? "AI 模式" : "双人模式";
+    }
+
+    // Initialize AI player if in AI mode
+    if (this.gameMode === "ai") {
+      this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
+    }
+
+    // Reset and start fresh
+    this.resetGame();
   }
 
   /**
@@ -135,6 +217,14 @@ class GomokuGame {
    */
   handleCanvasClick(e) {
     if (this.isAnimating || this.board.getGameState() !== GameState.PLAYING) {
+      return;
+    }
+
+    // Skip if it's AI's turn
+    if (
+      this.gameMode === "ai" &&
+      this.board.getCurrentPlayer() === this.aiPlayerColor
+    ) {
       return;
     }
 
@@ -173,6 +263,14 @@ class GomokuGame {
 
       // Enable/disable undo button
       this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
+
+      // Trigger AI move if in AI mode and game continues
+      if (
+        this.gameMode === "ai" &&
+        this.board.getGameState() === GameState.PLAYING
+      ) {
+        this.makeAIMove();
+      }
     }
   }
 
@@ -588,6 +686,68 @@ class GomokuGame {
     this.clearHint();
     this.drawBoard();
     this.updateUI();
+  }
+
+  /**
+   * Set game mode
+   * @param {string} mode - 'pvp' or 'ai'
+   */
+  setGameMode(mode) {
+    this.gameMode = mode;
+    if (mode === "ai") {
+      this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
+    }
+  }
+
+  /**
+   * Set AI difficulty
+   * @param {string} difficulty - 'easy', 'medium', or 'hard'
+   */
+  setAIDifficulty(difficulty) {
+    this.aiDifficulty = difficulty;
+    if (this.gameMode === "ai") {
+      this.aiPlayer = new AIPlayer(this.board, difficulty);
+    }
+  }
+
+  /**
+   * Reset the game completely
+   */
+  resetGame() {
+    this.board.reset();
+    this.highlightedCell = null;
+    this.clearHint();
+    if (this.gameMode === "ai") {
+      this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
+    }
+    this.drawBoard();
+    this.updateUI();
+  }
+
+  /**
+   * Make AI move
+   */
+  makeAIMove() {
+    if (
+      this.gameMode !== "ai" ||
+      this.board.getGameState() !== GameState.PLAYING
+    ) {
+      return;
+    }
+
+    // Show AI thinking indicator
+    this.gameStatusElement.textContent = "AI 思考中...";
+    this.gameStatusElement.style.color = "#FFA500";
+
+    // Use setTimeout to allow UI to update before AI computation
+    setTimeout(() => {
+      const move = this.aiPlayer.getMove();
+      if (move && this.board.makeMove(move.row, move.col)) {
+        this.drawStone(move.row, move.col, this.aiPlayerColor, true);
+        this.updateUI();
+        this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
+      }
+    }, 100);
   }
 
   /**
