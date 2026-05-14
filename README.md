@@ -22,7 +22,7 @@ python -m http.server 8000
 - 双人对战 / AI 对战（三种难度：简单、中等、困难）
 - 棋子放置动画与获胜高亮
 - 悬停预览下一步棋位
-- 智能提示（评分算法）
+- AI 智能提示
 - 撤销上一步
 - 响应式设计（桌面/移动端）
 
@@ -38,7 +38,9 @@ python -m http.server 8000
 │   └── utils.js        # 工具函数与常量
 ├── server/             # 本地开发服务器
 │   └── index.js
-└── tests/test.mjs      # 棋盘逻辑测试
+├── tests/
+│   ├── test.mjs         # 棋盘逻辑测试
+│   └── ai.test.mjs      # AI 棋型评估测试
 ```
 
 ## 开发
