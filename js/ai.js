@@ -78,6 +78,16 @@ export class AIPlayer {
    * Medium mode: alpha-beta depth 2
    */
   getMoveMedium(validMoves) {
+    const currentPlayer = this.board.getCurrentPlayer();
+
+    // Move ordering: score each candidate position heuristically
+    for (const move of validMoves) {
+      move.heuristicScore = this.scoreMove(
+        move.row, move.col, currentPlayer, this.board
+      );
+    }
+    validMoves.sort((a, b) => b.heuristicScore - a.heuristicScore);
+
     let bestScore = -Infinity;
     let bestMove = validMoves[0];
 
@@ -99,6 +109,16 @@ export class AIPlayer {
    * Hard mode: alpha-beta depth 3 with transposition table
    */
   getMoveHard(validMoves) {
+    const currentPlayer = this.board.getCurrentPlayer();
+
+    // Move ordering: score each candidate position heuristically
+    for (const move of validMoves) {
+      move.heuristicScore = this.scoreMove(
+        move.row, move.col, currentPlayer, this.board
+      );
+    }
+    validMoves.sort((a, b) => b.heuristicScore - a.heuristicScore);
+
     let bestScore = -Infinity;
     let bestMove = validMoves[0];
 
@@ -211,6 +231,25 @@ export class AIPlayer {
     score = this.evaluatePatternsAt(row, col, currentPlayer, tempBoard);
 
     tempBoard.grid[row][col] = null;
+    return score;
+  }
+
+  /**
+   * Heuristic move score for ordering: attack + defense value of a position.
+   */
+  scoreMove(row, col, player, board) {
+    const opponent = player === "black" ? "white" : "black";
+
+    // Attack: what patterns does this position create for the player?
+    board.setCellDirect(row, col, player);
+    let score = this.evaluatePatternsAt(row, col, player, board);
+
+    // Defense: what patterns would the opponent create if they took this spot?
+    board.setCellDirect(row, col, opponent);
+    score += this.evaluatePatternsAt(row, col, opponent, board);
+
+    // Clean up
+    board.setCellDirect(row, col, null);
     return score;
   }
 
