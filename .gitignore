@@ -29,6 +29,9 @@ out/
 # 缓存
 .cache/
 
+# Git worktrees
+.worktrees/
+
 # 操作系统
 .DS_Store
 .DS_Store?
