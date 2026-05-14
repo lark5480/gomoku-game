@@ -8,14 +8,14 @@ import { BOARD_SIZE, isValidPosition } from "./utils.js";
 
 // Pattern scores
 const SCORES = {
-  FIVE: 100000,
-  LIVE_FOUR: 10000,
-  RUSH_FOUR: 1000,
+  FIVE: 10000000,
+  LIVE_FOUR: 500000,
+  RUSH_FOUR: 50000,
   LIVE_THREE: 5000,
   SLEEP_THREE: 500,
   LIVE_TWO: 500,
   SLEEP_TWO: 50,
-  ONE: 5,
+  ONE: 10,
 };
 
 // Directions for pattern detection
