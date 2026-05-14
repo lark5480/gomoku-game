@@ -251,19 +251,40 @@ export class Board {
   }
 
   /**
-   * Get all valid (empty) positions on the board
+   * Get all valid moves (empty positions adjacent to existing stones)
    * @returns {Array} Array of {row, col} objects
    */
   getValidMoves() {
-    const moves = [];
+    const moves = new Set();
+    const directions = [
+      [-1, -1],
+      [-1, 0],
+      [-1, 1],
+      [0, -1],
+      [0, 1],
+      [1, -1],
+      [1, 0],
+      [1, 1],
+    ];
+
     for (let row = 0; row < this.size; row++) {
       for (let col = 0; col < this.size; col++) {
-        if (this.grid[row][col] === null) {
-          moves.push({ row, col });
+        if (this.grid[row][col] !== null) {
+          for (const [dr, dc] of directions) {
+            const nr = row + dr;
+            const nc = col + dc;
+            if (isValidPosition(nr, nc) && this.grid[nr][nc] === null) {
+              moves.add(`${nr},${nc}`);
+            }
+          }
         }
       }
     }
-    return moves;
+
+    return Array.from(moves).map((key) => {
+      const [row, col] = key.split(",").map(Number);
+      return { row, col };
+    });
   }
 
   /**
