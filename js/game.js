@@ -681,11 +681,7 @@ class GomokuGame {
    * Restart the game
    */
   restartGame() {
-    this.board.reset();
-    this.highlightedCell = null;
-    this.clearHint();
-    this.drawBoard();
-    this.updateUI();
+    this.resetGame();
   }
 
   /**
@@ -755,6 +751,15 @@ class GomokuGame {
    */
   undoMove() {
     if (this.board.undo()) {
+      // In AI mode, undo both the AI's move and the player's move
+      // so it's always the player's turn after undo
+      if (
+        this.gameMode === "ai" &&
+        this.board.getMoveHistory().length > 0 &&
+        this.board.getCurrentPlayer() === this.aiPlayerColor
+      ) {
+        this.board.undo();
+      }
       this.clearHint();
       this.drawBoard();
       this.updateUI();
