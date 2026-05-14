@@ -310,7 +310,11 @@ export class AIPlayer {
       for (let i = -4; i <= 4; i++) {
         const r = row + dr * i;
         const c = col + dc * i;
-        line.push(board.getCell(r, c));
+        if (isValidPosition(r, c)) {
+          line.push(board.getCell(r, c));
+        } else {
+          line.push(undefined);
+        }
       }
 
       const patternScore = this.evaluateLineScore(line, player);
