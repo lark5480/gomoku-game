@@ -3,7 +3,6 @@ allowed-tools: Read, Bash, WebFetch
 argument-hint: [文档文件路径]
 default: README.md
 description: 检查文档中的链接是否全部有效
-model: claude-haiku-4-5-20251001
 ---
 
 读取 $ARGUMENTS 文件，提取所有超链接（支持 Markdown [text](url) 格式和原始 URL），逐一请求并检查响应状态码。

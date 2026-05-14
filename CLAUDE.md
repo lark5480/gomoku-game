@@ -10,7 +10,9 @@
 
 - `npm start` - 启动本地开发服务器（端口 8000）
 - `npm run format` - Prettier 格式化（配置在 `.prettierrc.json`）
-- `npm test` - 运行测试套件
+- `npm test` - 运行全部测试（Board + AI，共 16 项）
+- `node tests/test.mjs` - 仅运行 Board 测试（10 项）
+- `node tests/ai.test.mjs` - 仅运行 AI 测试（6 项）
 
 ## 架构
 
@@ -26,26 +28,26 @@
 │   └── ai.js           # AI 对战（AIPlayer 类、三种难度）
 ├── server/             # 静态 HTTP 服务器
 │   └── index.js
-└── tests/test.mjs      # 棋盘逻辑测试
+├── tests/
+│   ├── test.mjs         # 棋盘逻辑测试（10 项）
+│   └── ai.test.mjs      # AI 棋型评估测试（6 项）
 ```
 
 ### 关键设计
 
-- 游戏逻辑 (board.js) 与渲染 (game.js) 分离
-- AI 算法独立 (ai.js)，通过接口与 game.js 交互
-- ES6 模块，`import`/`export`
-- Canvas 渲染，无 DOM 操作
-- 响应式：移动端 / 桌面端自适应
-- 提示系统使用评分算法，非完整搜索树
+- AI 双面评估：己方加分、对手减分，叶子节点即可见威胁
+- Alpha-Beta 搜索使用 makeMove/undo 原地操作，无 clone 开销
+- 根节点走法按启发式评分排序（攻击+防御），提升剪枝效率
+- 搜索前先检查直接取胜和必堵走法（O(N) 预检）
 - `IS_DEV` 标志控制调试日志
 
 ## AI 难度
 
-| 难度 | 算法 | 搜索深度 |
-|------|------|----------|
-| 简单 | 随机 + 基础评分 | - |
-| 中等 | Alpha-Beta 剪枝 | 1 |
-| 困难 | Alpha-Beta + 置换表 | 2 |
+| 难度 | 算法 | 搜索深度 | 说明 |
+|------|------|----------|------|
+| 简单 | 随机 + 位置评分 | - | 从 top5 候选中随机 |
+| 中等 | Alpha-Beta 剪枝 | 1 | 无置换表 |
+| 困难 | Alpha-Beta + 置换表 + 走法排序 | 3 | makeMove/undo 原地搜索 |
 
 ## 配置
 
@@ -55,6 +57,6 @@
 
 ## 开发指南
 
-- 游戏逻辑修改在 `board.js`，UI/渲染在 `game.js`，AI 在 `ai.js`，常量/工具在 `utils.js`
-- 测试重点：胜利检测（8 个方向）、坐标转换边界情况
-- 性能：Canvas 减少重绘，动画用 `requestAnimationFrame`
+- Board 关键方法：`makeMove`/`undo`（支持原地搜索）、`setCellDirect`（走法排序用）、`getValidMoves`（返回邻接空位，**非全部空位**）
+- AI 评分采用 per-stone 机制（每颗棋子独立评估四个方向），评分权重见 `SCORES` 常量
+- 测试覆盖：AI 棋型评估（活三/冲四/不连续/双面/杀棋）见 `tests/ai.test.mjs`
