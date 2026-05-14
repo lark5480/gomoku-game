@@ -177,16 +177,20 @@ export class AIPlayer {
   }
 
   /**
-   * Evaluate entire board for a player
+   * Evaluate entire board for both players
    */
-  evaluateBoard(board, player = null) {
-    const currentPlayer = player || board.getCurrentPlayer();
+  evaluateBoard(board) {
+    const currentPlayer = board.getCurrentPlayer();
+    const opponent = currentPlayer === "black" ? "white" : "black";
     let score = 0;
 
     for (let row = 0; row < BOARD_SIZE; row++) {
       for (let col = 0; col < BOARD_SIZE; col++) {
-        if (board.getCell(row, col) === currentPlayer) {
+        const cell = board.getCell(row, col);
+        if (cell === currentPlayer) {
           score += this.evaluatePatternsAt(row, col, currentPlayer, board);
+        } else if (cell === opponent) {
+          score -= this.evaluatePatternsAt(row, col, opponent, board);
         }
       }
     }
