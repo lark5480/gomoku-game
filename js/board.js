@@ -298,4 +298,48 @@ export class Board {
       (stone) => stone.row === row && stone.col === col,
     );
   }
+
+  /**
+   * Create a deep copy of the board
+   * @returns {Board} New Board instance with copied state
+   */
+  clone() {
+    const copy = new Board();
+    copy.size = this.size;
+    copy.grid = clone2DArray(this.grid);
+    copy.currentPlayer = this.currentPlayer;
+    copy.gameState = this.gameState;
+    copy.moveHistory = this.moveHistory.map((m) => ({ ...m }));
+    copy.winningStones = this.winningStones.map((s) => ({ ...s }));
+    return copy;
+  }
+
+  /**
+   * Evaluate a line of 5 positions for AI scoring
+   * @param {Array} line - Array of 5 cell values (null, 'black', or 'white')
+   * @returns {number} Score for this line
+   */
+  static evaluateLine(line) {
+    const counts = { black: 0, white: 0, empty: 0 };
+    for (const cell of line) {
+      if (cell === null) counts.empty++;
+      else counts[cell]++;
+    }
+
+    if (counts.black > 0 && counts.white > 0) return 0;
+
+    const player = counts.black > 0 ? "black" : "white";
+    const count = counts[player];
+    const openEnds = (line[0] === null ? 1 : 0) + (line[4] === null ? 1 : 0);
+
+    if (count >= 5) return 100000;
+    if (count === 4 && openEnds > 0) return openEnds === 2 ? 10000 : 1000;
+    if (count === 3 && openEnds === 2) return 1000;
+    if (count === 3 && openEnds === 1) return 100;
+    if (count === 2 && openEnds === 2) return 100;
+    if (count === 2 && openEnds === 1) return 10;
+    if (count === 1 && openEnds === 2) return 10;
+
+    return 0;
+  }
 }

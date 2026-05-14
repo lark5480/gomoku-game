@@ -11,6 +11,43 @@
     />
   </head>
   <body>
+    <!-- 开始界面 -->
+    <div class="start-screen" id="startScreen">
+      <div class="start-card">
+        <h1><i class="fas fa-gamepad"></i> 五子棋</h1>
+        <p class="start-subtitle">连五游戏 - 策略游戏</p>
+
+        <div class="mode-selection">
+          <h2>选择游戏模式</h2>
+          <div class="mode-buttons">
+            <button class="mode-btn selected" id="pvpBtn" data-mode="pvp">
+              <i class="fas fa-users"></i>
+              <span>双人模式</span>
+            </button>
+            <button class="mode-btn" id="aiBtn" data-mode="ai">
+              <i class="fas fa-robot"></i>
+              <span>AI 模式</span>
+            </button>
+          </div>
+
+          <div class="difficulty-selection" id="difficultySelection">
+            <h3>选择 AI 难度</h3>
+            <div class="difficulty-buttons">
+              <button class="diff-btn selected" data-difficulty="easy">
+                简单
+              </button>
+              <button class="diff-btn" data-difficulty="medium">中等</button>
+              <button class="diff-btn" data-difficulty="hard">困难</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary start-btn" id="startBtn">
+          <i class="fas fa-play"></i> 开始游戏
+        </button>
+      </div>
+    </div>
+
     <div class="container">
       <header>
         <h1><i class="fas fa-gamepad"></i> 五子棋</h1>
@@ -20,6 +57,7 @@
       <main>
         <div class="game-area">
           <div class="game-info">
+            <div class="game-mode" id="gameMode">双人模式</div>
             <div class="current-player" id="currentPlayer">
               <span class="player-icon black"></span>
               <span>黑方回合</span>
@@ -30,6 +68,12 @@
           <div class="board-container">
             <canvas id="gameBoard" width="600" height="600"></canvas>
             <div class="board-overlay" id="boardOverlay"></div>
+            <div class="ai-thinking" id="aiThinking">
+              <div class="thinking-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span>AI 思考中...</span>
+            </div>
           </div>
 
           <div class="controls">
