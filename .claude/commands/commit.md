@@ -1,9 +1,7 @@
 ---
 allowed-tools: Read, Grep, Bash(git add:*), Bash(git status:*), Bash(git diff:*), Bash(git commit:*)
 argument-hint: [commit-message]
-default: type(scope): description
 description: 检查代码质量后提交
-model: claude-haiku-4-7-20250514
 ---
 
 ## 暂存区内容

@@ -1,3 +1,8 @@
+---
+description: Code Review
+allowed-tools: Read, Grep, Bash(git diff:*), Bash(git log:*)
+---
+
 # Code Review
 
 请对当前修改执行完整的代码审查：

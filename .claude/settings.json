@@ -10,5 +10,7 @@
       "Bash(curl * | bash)"
     ]
   },
-  "enabledPlugins": {}
+  "enabledPlugins": {
+    
+  }
 }
