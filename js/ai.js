@@ -92,10 +92,12 @@ export class AIPlayer {
     let bestMove = validMoves[0];
 
     for (const move of validMoves) {
-      const boardClone = this.board.clone();
-      boardClone.makeMove(move.row, move.col);
+      this.board.makeMove(move.row, move.col);
 
-      const score = -this.alphaBeta(boardClone, 1, -Infinity, Infinity);
+      const score = -this.alphaBeta(this.board, 1, -Infinity, Infinity);
+
+      this.board.undo();
+
       if (score > bestScore) {
         bestScore = score;
         bestMove = move;
@@ -121,25 +123,28 @@ export class AIPlayer {
 
     let bestScore = -Infinity;
     let bestMove = validMoves[0];
+    this.transpositionTable.clear();
 
     for (const move of validMoves) {
-      const boardClone = this.board.clone();
-      boardClone.makeMove(move.row, move.col);
+      this.board.makeMove(move.row, move.col);
 
-      const key = this.getBoardKey(boardClone);
+      const key = this.getBoardKey(this.board);
+      let score;
+
       if (this.transpositionTable.has(key)) {
         const cached = this.transpositionTable.get(key);
         if (cached.depth >= 3) {
-          if (cached.score > bestScore) {
-            bestScore = cached.score;
-            bestMove = move;
-          }
-          continue;
+          score = cached.score;
+        } else {
+          score = -this.alphaBeta(this.board, 3, -Infinity, Infinity);
+          this.transpositionTable.set(key, { score, depth: 3 });
         }
+      } else {
+        score = -this.alphaBeta(this.board, 3, -Infinity, Infinity);
+        this.transpositionTable.set(key, { score, depth: 3 });
       }
 
-      const score = -this.alphaBeta(boardClone, 3, -Infinity, Infinity);
-      this.transpositionTable.set(key, { score, depth: 3 });
+      this.board.undo();
 
       if (score > bestScore) {
         bestScore = score;
@@ -172,15 +177,16 @@ export class AIPlayer {
     }
 
     for (const move of validMoves) {
-      const boardClone = board.clone();
-      boardClone.makeMove(move.row, move.col);
+      board.makeMove(move.row, move.col);
 
-      const score = -this.alphaBeta(boardClone, depth - 1, -beta, -alpha);
+      const score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
+
+      board.undo();
+
       if (score > alpha) {
         alpha = score;
       }
       if (alpha >= beta) {
-        beta = alpha;
         break;
       }
     }
