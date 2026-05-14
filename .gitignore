@@ -54,6 +54,7 @@ Thumbs.db
 __snapshots__/
 
 # Claude Code 个人配置（不应提交）
+.claude/skills/
 .claude/CLAUDE.md
 .claude/commands/fix-issue.md
 .claude/commands/pr-review.md
@@ -71,4 +72,5 @@ test-report*.md
 code-review*.md
 
 # 项目特定
+doc/
 CLAUDE.local.md
