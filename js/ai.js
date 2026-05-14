@@ -48,6 +48,14 @@ export class AIPlayer {
       return validMoves[0];
     }
 
+    // Pre-check: immediate win
+    const winMove = this.findImmediateWin(validMoves);
+    if (winMove) return winMove;
+
+    // Pre-check: must block opponent's immediate win
+    const blockMove = this.findMustBlock(validMoves);
+    if (blockMove) return blockMove;
+
     switch (this.difficulty) {
       case "easy":
         return this.getMoveEasy(validMoves);
@@ -238,6 +246,38 @@ export class AIPlayer {
 
     tempBoard.grid[row][col] = null;
     return score;
+  }
+
+  /**
+   * Check if there is a move that immediately wins (completes five in a row).
+   * @returns {Object|null} Winning move {row, col} or null
+   */
+  findImmediateWin(validMoves) {
+    const player = this.board.getCurrentPlayer();
+    for (const move of validMoves) {
+      this.board.setCellDirect(move.row, move.col, player);
+      const patterns = this.evaluatePatternsAt(move.row, move.col, player, this.board);
+      this.board.setCellDirect(move.row, move.col, null);
+
+      if (patterns >= SCORES.FIVE) return move;
+    }
+    return null;
+  }
+
+  /**
+   * Check if opponent has an immediate winning threat that must be blocked.
+   * @returns {Object|null} Blocking move {row, col} or null
+   */
+  findMustBlock(validMoves) {
+    const opponent = this.board.getCurrentPlayer() === "black" ? "white" : "black";
+    for (const move of validMoves) {
+      this.board.setCellDirect(move.row, move.col, opponent);
+      const patterns = this.evaluatePatternsAt(move.row, move.col, opponent, this.board);
+      this.board.setCellDirect(move.row, move.col, null);
+
+      if (patterns >= SCORES.FIVE) return move;
+    }
+    return null;
   }
 
   /**
