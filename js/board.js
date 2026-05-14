@@ -238,6 +238,19 @@ export class Board {
   }
 
   /**
+   * Directly set a cell value without game logic (win check, player switch, history).
+   * Used for heuristic scoring during move ordering.
+   * @param {number} row
+   * @param {number} col
+   * @param {string|null} value - 'black', 'white', or null
+   */
+  setCellDirect(row, col, value) {
+    if (isValidPosition(row, col)) {
+      this.grid[row][col] = value;
+    }
+  }
+
+  /**
    * Check if a cell is part of winning line
    * @param {number} row - Row index
    * @param {number} col - Column index
