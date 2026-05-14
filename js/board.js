@@ -251,6 +251,22 @@ export class Board {
   }
 
   /**
+   * Get all valid (empty) positions on the board
+   * @returns {Array} Array of {row, col} objects
+   */
+  getValidMoves() {
+    const moves = [];
+    for (let row = 0; row < this.size; row++) {
+      for (let col = 0; col < this.size; col++) {
+        if (this.grid[row][col] === null) {
+          moves.push({ row, col });
+        }
+      }
+    }
+    return moves;
+  }
+
+  /**
    * Check if a cell is part of winning line
    * @param {number} row - Row index
    * @param {number} col - Column index
