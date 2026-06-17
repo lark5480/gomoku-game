@@ -48,7 +48,7 @@ python -m http.server 8000
 │   ├── test.mjs         # 棋盘逻辑测试（10 项）
 │   └── ai.test.mjs      # AI 棋型评估测试（6 项）
 └── docs/
-    ├── README.md         # 项目文档（新同学从这里开始）
+    ├── development.md    # 开发指南（架构、约定、FAQ）
     └── online-mode.md    # 在线对战技术文档
 ```
 
@@ -60,7 +60,7 @@ npm test           # 运行全部测试
 npm run format     # 代码格式化
 ```
 
-新同学建议先阅读 `docs/README.md`。
+新同学建议先阅读 `docs/development.md`。
 
 ## 许可证
 

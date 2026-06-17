@@ -34,7 +34,7 @@
 │   ├── test.mjs         # 棋盘逻辑测试（10 项）
 │   └── ai.test.mjs      # AI 棋型评估测试（6 项）
 └── docs/
-    ├── README.md         # 项目文档（新同学入口）
+    ├── development.md    # 开发指南（架构、约定、FAQ）
     └── online-mode.md    # 在线对战协议与流程文档
 ```
 
@@ -76,4 +76,4 @@
 - 测试覆盖：AI 棋型评估（活三/冲四/不连续/双面/杀棋）见 `tests/ai.test.mjs`
 - OnlineManager 回调模式：`onXxx` 回调由 `game.js` 的 `setupOnlineCallbacks()` 统一注册
 - 坐标转换：`screenToBoard` 使用 `Math.round` 取最近交叉点（不是 `Math.floor`）
-- 新同学文档：`docs/README.md`（项目概览）、`docs/online-mode.md`（在线对战协议）
+- 新同学文档：`docs/development.md`（开发指南）、`docs/online-mode.md`（在线对战协议）

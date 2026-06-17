@@ -56,6 +56,8 @@ class GomokuGame {
     if (!this.undoBtn) {
       throw new Error("撤销按钮未找到");
     }
+    // Save original undo button content so we can toggle it for online surrender
+    this._undoBtnOriginalHTML = this.undoBtn.innerHTML;
 
     this.hintBtn = document.getElementById("hintBtn");
     if (!this.hintBtn) {
@@ -149,13 +151,20 @@ class GomokuGame {
     // Canvas mouse move for highlighting
     this.canvas.addEventListener("mousemove", (e) => this.handleMouseMove(e));
     this.canvas.addEventListener("mouseleave", () => {
+      if (this.inReplayMode) return;
       this.highlightedCell = null;
       this.drawBoard();
     });
 
     // Control buttons
     this.restartBtn.addEventListener("click", () => this.restartGame());
-    this.undoBtn.addEventListener("click", () => this.undoMove());
+    this.undoBtn.addEventListener("click", () => {
+      if (this.gameMode === "online" && this.board.getGameState() === GameState.PLAYING) {
+        this.online.sendSurrender();
+      } else {
+        this.undoMove();
+      }
+    });
     this.hintBtn.addEventListener("click", () => this.showHint());
 
     // Start screen buttons
@@ -343,6 +352,7 @@ class GomokuGame {
    * @param {MouseEvent} e - Mouse event
    */
   handleMouseMove(e) {
+    if (this.inReplayMode) return;
     if (this.isAnimating || this.board.getGameState() !== GameState.PLAYING) {
       this.highlightedCell = null;
       return;
@@ -732,10 +742,21 @@ class GomokuGame {
 
     // Update button states
     this.restartBtn.disabled = this.gameMode === "online" && gameState === GameState.PLAYING;
-    this.undoBtn.disabled =
-      this.gameMode === "online" ||
-      this.board.getMoveHistory().length === 0 ||
-      gameState !== GameState.PLAYING;
+
+    if (this.gameMode === "online" && gameState === GameState.PLAYING) {
+      // Online mode: repurpose undo button as surrender
+      this.undoBtn.disabled = false;
+      this.undoBtn.innerHTML = '<i class="fas fa-flag"></i> 认输';
+    } else {
+      this.undoBtn.disabled =
+        this.gameMode === "online" ||
+        this.board.getMoveHistory().length === 0 ||
+        gameState !== GameState.PLAYING;
+      // Restore original undo text if it was changed
+      if (this.undoBtn.innerHTML !== this._undoBtnOriginalHTML) {
+        this.undoBtn.innerHTML = this._undoBtnOriginalHTML;
+      }
+    }
 
     // Disable hint in online mode
     this.hintBtn.disabled = this.gameMode === "online";
@@ -1075,6 +1096,7 @@ class GomokuGame {
     if (!history || history.length === 0) return;
 
     this.inReplayMode = true;
+    this.hideOnlineStatus();
     this.replay.load(history.map((m) => ({ row: m.row, col: m.col, player: m.player })));
     this.replay.onChange = (step, total, playing) => {
       this.updateReplayUI(step, total, playing);
@@ -1296,7 +1318,9 @@ class GomokuGame {
 
     this.online.onGameEnd = ({ winner, reason }) => {
       let msg;
-      if (reason === "disconnect") {
+      if (reason === "surrender") {
+        msg = winner === this.onlineMyColor ? "对手认输，你赢了!" : "你认输了!";
+      } else if (reason === "disconnect") {
         msg = "对手断线，你赢了!";
       } else if (winner === this.onlineMyColor) {
         msg = "你赢了!";
@@ -1305,7 +1329,18 @@ class GomokuGame {
       } else {
         msg = "你输了!";
       }
+
+      // Update local board state so restart button enables
+      if (winner === "black") {
+        this.board.gameState = GameState.BLACK_WIN;
+      } else if (winner === "white") {
+        this.board.gameState = GameState.WHITE_WIN;
+      } else {
+        this.board.gameState = GameState.DRAW;
+      }
+
       this.showOnlineStatus(msg);
+      this.updateUI();
     };
 
     this.online.onOpponentDisconnect = () => {

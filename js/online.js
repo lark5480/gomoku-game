@@ -101,6 +101,11 @@ export class OnlineManager {
     this._send({ type: "move", row, col });
   }
 
+  /** Surrender the current game (online mode) */
+  sendSurrender() {
+    this._send({ type: "surrender" });
+  }
+
   /** Request a game restart (online mode) */
   sendRestart() {
     this._send({ type: "restart" });

@@ -57,15 +57,10 @@ __snapshots__/
 .claude/skills/
 .claude/settings.local.json
 
-# 测试和调试文件
-*.test.mjs
-*.test.js
-*test*.mjs
-*test*.js
-*test*.png
-test-report*.md
+# Claude Code 生成的临时审查/报告文件
 code-review*.md
+test-report*.md
 
 # 项目特定
-doc/
+docs/superpowers
 CLAUDE.local.md

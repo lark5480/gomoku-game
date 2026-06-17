@@ -321,6 +321,27 @@ function handleMessage(ws, msg) {
       break;
     }
 
+    case "surrender": {
+      const room = wsRoomMap.get(ws);
+      if (!room || room.state !== "playing") return;
+
+      const playerColor = room.playerColor(ws);
+      const winnerColor = playerColor === "black" ? "white" : "black";
+
+      room.state = "finished";
+      room.winner = winnerColor;
+      room.touch();
+
+      if (room.disconnectTimer) {
+        clearTimeout(room.disconnectTimer);
+        room.disconnectTimer = null;
+      }
+
+      room.broadcast({ type: "game:end", winner: winnerColor, reason: "surrender" });
+      console.log(`Room ${room.code}: ${playerColor} surrendered, ${winnerColor} wins`);
+      break;
+    }
+
     case "restart": {
       const room = wsRoomMap.get(ws);
       if (!room || room.state !== "finished") return;
