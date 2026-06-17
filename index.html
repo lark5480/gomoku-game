@@ -28,6 +28,10 @@
               <i class="fas fa-robot"></i>
               <span>AI 模式</span>
             </button>
+            <button class="mode-btn" id="onlineBtn" data-mode="online">
+              <i class="fas fa-globe"></i>
+              <span>在线对战</span>
+            </button>
           </div>
 
           <div class="difficulty-selection" id="difficultySelection">
@@ -38,6 +42,21 @@
               </button>
               <button class="diff-btn" data-difficulty="medium">中等</button>
               <button class="diff-btn" data-difficulty="hard">困难</button>
+            </div>
+          </div>
+
+          <div class="online-lobby" id="onlineLobby">
+            <h3>在线对战</h3>
+            <div class="lobby-actions">
+              <button class="btn btn-primary" id="createRoomBtn">
+                <i class="fas fa-plus"></i> 创建房间
+              </button>
+              <div class="join-room">
+                <input type="text" id="roomCodeInput" placeholder="输入房间码" maxlength="4" />
+                <button class="btn btn-secondary" id="joinRoomBtn">
+                  <i class="fas fa-sign-in-alt"></i> 加入
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -68,6 +87,7 @@
           <div class="board-container">
             <canvas id="gameBoard" width="600" height="600"></canvas>
             <div class="board-overlay" id="boardOverlay"></div>
+            <div class="online-overlay" id="onlineOverlay"></div>
             <div class="ai-thinking" id="aiThinking">
               <div class="thinking-dots">
                 <span></span><span></span><span></span>
@@ -86,6 +106,26 @@
             <button id="hintBtn" class="btn btn-secondary">
               <i class="fas fa-lightbulb"></i> 显示提示
             </button>
+            <button id="replayBtn" class="btn btn-secondary" style="display: none">
+              <i class="fas fa-film"></i> 棋谱回放
+            </button>
+          </div>
+
+          <div class="replay-bar" id="replayBar" style="display: none">
+            <div class="replay-controls">
+              <button class="replay-btn replay-first" title="第一步"><i class="fas fa-fast-backward"></i></button>
+              <button class="replay-btn replay-prev" title="上一步"><i class="fas fa-step-backward"></i></button>
+              <button class="replay-btn replay-toggle" title="播放/暂停"><i class="fas fa-play"></i></button>
+              <button class="replay-btn replay-next" title="下一步"><i class="fas fa-step-forward"></i></button>
+              <button class="replay-btn replay-last" title="最后一步"><i class="fas fa-fast-forward"></i></button>
+              <span class="replay-step">1 / 1</span>
+              <div class="replay-speed-group">
+                <button class="replay-btn replay-speed active" data-speed="1">1x</button>
+                <button class="replay-btn replay-speed" data-speed="2">2x</button>
+                <button class="replay-btn replay-speed" data-speed="4">4x</button>
+              </div>
+              <button class="replay-btn replay-exit" title="退出回放"><i class="fas fa-times"></i></button>
+            </div>
           </div>
         </div>
 

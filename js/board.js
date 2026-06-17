@@ -53,6 +53,21 @@ export class Board {
   }
 
   /**
+   * Restore board state from a saved snapshot (e.g. online reconnect).
+   * Does not preserve move history.
+   * @param {string[][]} grid - 2D grid array
+   * @param {string} currentPlayer - 'black' or 'white'
+   * @param {string} gameState - One of GameState values
+   */
+  restoreState(grid, currentPlayer, gameState) {
+    this.grid = clone2DArray(grid);
+    this.currentPlayer = currentPlayer;
+    this.gameState = gameState;
+    this.moveHistory = [];
+    this.winningStones = [];
+  }
+
+  /**
    * Make a move at specified position
    * @param {number} row - Row index (0-14)
    * @param {number} col - Column index (0-14)

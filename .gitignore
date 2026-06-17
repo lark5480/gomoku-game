@@ -55,22 +55,12 @@ __snapshots__/
 
 # Claude Code 个人配置（不应提交）
 .claude/skills/
-.claude/CLAUDE.md
-.claude/commands/fix-issue.md
-.claude/commands/pr-review.md
-.claude/commands/security-scan.md
-.claude/rules/api-conventions.md
 .claude/settings.local.json
 
-# 测试和调试文件
-*.test.mjs
-*.test.js
-*test*.mjs
-*test*.js
-*test*.png
-test-report*.md
+# Claude Code 生成的临时审查/报告文件
 code-review*.md
+test-report*.md
 
 # 项目特定
-doc/
+docs/superpowers
 CLAUDE.local.md
