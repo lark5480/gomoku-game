@@ -26,11 +26,17 @@ const DIRECTIONS = [
   [1, -1],
 ];
 
+// Thrown when iterative deepening search exceeds time budget
+class SearchTimeout extends Error {}
+
 export class AIPlayer {
   constructor(board, difficulty = "medium") {
     this.board = board;
     this.difficulty = difficulty;
     this.transpositionTable = new Map();
+    this.timeLimit = 2000; // ms, for iterative deepening in hard mode
+    this.searchStartTime = 0;
+    this.nodeCount = 0;
   }
 
   /**
@@ -87,6 +93,8 @@ export class AIPlayer {
    */
   getMoveMedium(validMoves) {
     const currentPlayer = this.board.getCurrentPlayer();
+    this.searchStartTime = performance.now();
+    this.nodeCount = 0;
 
     // Move ordering: score each candidate position heuristically
     for (const move of validMoves) {
@@ -116,12 +124,14 @@ export class AIPlayer {
   }
 
   /**
-   * Hard mode: alpha-beta depth 3 with transposition table
+   * Hard mode: iterative deepening alpha-beta with time limit
+   * Searches depth 1, 2, 3, ... until time runs out.
+   * Returns the best move from the last fully completed depth.
    */
   getMoveHard(validMoves) {
     const currentPlayer = this.board.getCurrentPlayer();
 
-    // Move ordering: score each candidate position heuristically
+    // Score and sort candidates once
     for (const move of validMoves) {
       move.heuristicScore = this.scoreMove(
         move.row, move.col, currentPlayer, this.board
@@ -129,44 +139,72 @@ export class AIPlayer {
     }
     validMoves.sort((a, b) => b.heuristicScore - a.heuristicScore);
 
-    let bestScore = -Infinity;
-    let bestMove = validMoves[0];
     this.transpositionTable.clear();
+    this.searchStartTime = performance.now();
+    this.nodeCount = 0;
 
-    for (const move of validMoves) {
-      this.board.makeMove(move.row, move.col);
+    let bestMove = validMoves[0];
+    const MAX_DEPTH = 7;
 
-      const key = this.getBoardKey(this.board);
-      let score;
+    try {
+      for (let depth = 1; depth <= MAX_DEPTH; depth++) {
+        let bestScore = -Infinity;
+        let depthBestMove = validMoves[0];
 
-      if (this.transpositionTable.has(key)) {
-        const cached = this.transpositionTable.get(key);
-        if (cached.depth >= 3) {
-          score = cached.score;
-        } else {
-          score = -this.alphaBeta(this.board, 3, -Infinity, Infinity);
-          this.transpositionTable.set(key, { score, depth: 3 });
+        for (const move of validMoves) {
+          this.board.makeMove(move.row, move.col);
+
+          const key = this.getBoardKey(this.board);
+          let score;
+
+          const cached = this.transpositionTable.get(key);
+          if (cached && cached.depth >= depth) {
+            score = cached.score;
+          } else {
+            score = -this.alphaBeta(this.board, depth, -Infinity, Infinity);
+            this.transpositionTable.set(key, { score, depth });
+          }
+
+          this.board.undo();
+
+          if (score > bestScore) {
+            bestScore = score;
+            depthBestMove = move;
+          }
         }
-      } else {
-        score = -this.alphaBeta(this.board, 3, -Infinity, Infinity);
-        this.transpositionTable.set(key, { score, depth: 3 });
-      }
 
-      this.board.undo();
+        bestMove = depthBestMove;
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
+        // Re-sort: move the best to front for next depth
+        const idx = validMoves.indexOf(depthBestMove);
+        if (idx > 0) {
+          validMoves.splice(idx, 1);
+          validMoves.unshift(depthBestMove);
+        }
+
+        // Stop early if we found a winning move
+        if (bestScore >= SCORES.FIVE) break;
       }
+    } catch (e) {
+      if (!(e instanceof SearchTimeout)) throw e;
+      // Time expired — bestMove holds the result from the last completed depth
     }
 
     return bestMove;
   }
 
   /**
-   * Alpha-beta pruning search
+   * Alpha-beta pruning with time budget and internal move ordering
    */
   alphaBeta(board, depth, alpha, beta) {
+    // Periodic time check (every 4096 nodes for performance)
+    this.nodeCount++;
+    if ((this.nodeCount & 0xfff) === 0) {
+      if (performance.now() - this.searchStartTime > this.timeLimit) {
+        throw new SearchTimeout();
+      }
+    }
+
     if (depth === 0) {
       return this.evaluateBoard(board);
     }
@@ -177,18 +215,25 @@ export class AIPlayer {
     }
 
     const key = this.getBoardKey(board);
-    if (this.transpositionTable.has(key)) {
-      const cached = this.transpositionTable.get(key);
-      if (cached.depth >= depth) {
-        return cached.score;
+    const cached = this.transpositionTable.get(key);
+    if (cached && cached.depth >= depth) {
+      return cached.score;
+    }
+
+    // Move ordering at internal nodes: sort top candidates for better pruning
+    if (validMoves.length > 1 && depth >= 2) {
+      const currentPlayer = board.getCurrentPlayer();
+      const limit = Math.min(validMoves.length, 15);
+      for (const move of validMoves) {
+        move._hs = this.scoreMove(move.row, move.col, currentPlayer, board);
       }
+      validMoves.sort((a, b) => b._hs - a._hs);
+      validMoves.length = limit;
     }
 
     for (const move of validMoves) {
       board.makeMove(move.row, move.col);
-
       const score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
-
       board.undo();
 
       if (score > alpha) {
@@ -199,7 +244,7 @@ export class AIPlayer {
       }
     }
 
-    this.transpositionTable.set(key, { score: alpha, depth: depth });
+    this.transpositionTable.set(key, { score: alpha, depth });
     return alpha;
   }
 

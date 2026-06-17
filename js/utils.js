@@ -36,9 +36,9 @@ export function screenToBoard(x, y, canvas, cellSize = CELL_SIZE) {
   const boardX = canvasX - BOARD_PADDING;
   const boardY = canvasY - BOARD_PADDING;
 
-  // Calculate grid position
-  const col = Math.floor(boardX / cellSize);
-  const row = Math.floor(boardY / cellSize);
+  // Calculate grid position (round to nearest intersection)
+  const col = Math.round(boardX / cellSize);
+  const row = Math.round(boardY / cellSize);
 
   // Check if within board bounds
   if (row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE) {

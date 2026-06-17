@@ -12,5 +12,8 @@
   "type": "module",
   "devDependencies": {
     "prettier": "^3.8.1"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

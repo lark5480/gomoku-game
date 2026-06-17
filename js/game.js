@@ -5,6 +5,8 @@
 
 import { Board, GameState, Player } from "./board.js";
 import { AIPlayer } from "./ai.js";
+import { ReplayPlayer } from "./replay.js";
+import { OnlineManager } from "./online.js";
 import {
   screenToBoard,
   CELL_SIZE,
@@ -83,6 +85,19 @@ class GomokuGame {
     this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
     this.aiPlayerColor = Player.WHITE; // AI plays as WHITE (player plays as BLACK)
 
+    // Replay mode
+    this.replay = new ReplayPlayer();
+    this.inReplayMode = false;
+    this.replayBar = null;
+    this.replayStepDisplay = null;
+
+    // Online mode
+    this.online = new OnlineManager();
+    this.onlineRoomCode = null;
+    this.onlineMyColor = null;
+    this.onlineOpponentReady = false;
+    this.onlineOverlay = null;
+
     // Initialize
     this.init();
   }
@@ -156,6 +171,27 @@ class GomokuGame {
         this.handleDifficultySelect(difficulty);
       });
     });
+
+    // Replay elements (lazy-init, created when game ends)
+    this.replayBtn = document.getElementById("replayBtn");
+    this.replayBar = document.getElementById("replayBar");
+    if (this.replayBtn) {
+      this.replayBtn.addEventListener("click", () => this.startReplay());
+      this.replayBtn.style.display = "none";
+    }
+    if (this.replayBar) {
+      this.replayBar.style.display = "none";
+      this.setupReplayControls();
+    }
+
+    // Online mode elements
+    this.onlineBtn = document.getElementById("onlineBtn");
+    this.onlineLobby = document.getElementById("onlineLobby");
+    if (this.onlineBtn) {
+      this.onlineBtn.addEventListener("click", () => this.handleModeSelect("online"));
+    }
+    this.setupOnlineLobby();
+    this.setupOnlineCallbacks();
   }
 
   /**
@@ -168,9 +204,15 @@ class GomokuGame {
     // Update UI
     this.pvpBtn.classList.toggle("selected", mode === "pvp");
     this.aiBtn.classList.toggle("selected", mode === "ai");
+    if (this.onlineBtn) this.onlineBtn.classList.toggle("selected", mode === "online");
 
     // Show/hide difficulty selection
     this.difficultySelection.classList.toggle("visible", mode === "ai");
+
+    // Show/hide online lobby
+    if (this.onlineLobby) {
+      this.onlineLobby.classList.toggle("visible", mode === "online");
+    }
   }
 
   /**
@@ -198,8 +240,16 @@ class GomokuGame {
 
     // Update game mode display
     if (this.gameModeDisplay) {
-      this.gameModeDisplay.textContent =
-        this.gameMode === "ai" ? "AI 模式" : "双人模式";
+      const modeNames = { ai: "AI 模式", pvp: "双人模式", online: "在线对战" };
+      this.gameModeDisplay.textContent = modeNames[this.gameMode] || "双人模式";
+    }
+
+    if (this.gameMode === "online") {
+      // Online mode: don't start game yet, wait for room creation/join
+      this.resetGame();
+      // Show lobby overlay on the game screen
+      this.showOnlineLobby();
+      return;
     }
 
     // Initialize AI player if in AI mode
@@ -216,6 +266,7 @@ class GomokuGame {
    * @param {MouseEvent} e - Mouse event
    */
   handleCanvasClick(e) {
+    if (this.inReplayMode) return;
     if (this.isAnimating || this.board.getGameState() !== GameState.PLAYING) {
       return;
     }
@@ -224,6 +275,14 @@ class GomokuGame {
     if (
       this.gameMode === "ai" &&
       this.board.getCurrentPlayer() === this.aiPlayerColor
+    ) {
+      return;
+    }
+
+    // Skip if online and not our turn
+    if (
+      this.gameMode === "online" &&
+      this.board.getCurrentPlayer() !== this.onlineMyColor
     ) {
       return;
     }
@@ -263,6 +322,11 @@ class GomokuGame {
 
       // Enable/disable undo button
       this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
+
+      // Send move to server in online mode
+      if (this.gameMode === "online") {
+        this.online.sendMove(row, col);
+      }
 
       // Trigger AI move if in AI mode and game continues
       if (
@@ -667,13 +731,24 @@ class GomokuGame {
     this.gameStatusElement.style.color = statusColor;
 
     // Update button states
+    this.restartBtn.disabled = this.gameMode === "online" && gameState === GameState.PLAYING;
     this.undoBtn.disabled =
+      this.gameMode === "online" ||
       this.board.getMoveHistory().length === 0 ||
       gameState !== GameState.PLAYING;
+
+    // Disable hint in online mode
+    this.hintBtn.disabled = this.gameMode === "online";
 
     // Clear hint if game is over
     if (gameState !== GameState.PLAYING) {
       this.clearHint();
+      // Show replay button when game ends
+      if (this.replayBtn && this.board.getMoveHistory().length > 0) {
+        this.replayBtn.style.display = "";
+      }
+    } else {
+      if (this.replayBtn) this.replayBtn.style.display = "none";
     }
   }
 
@@ -681,6 +756,10 @@ class GomokuGame {
    * Restart the game
    */
   restartGame() {
+    if (this.gameMode === "online") {
+      this.online.sendRestart();
+      return;
+    }
     this.resetGame();
   }
 
@@ -710,6 +789,7 @@ class GomokuGame {
    * Reset the game completely
    */
   resetGame() {
+    this.exitReplayMode();
     this.board.reset();
     this.highlightedCell = null;
     this.clearHint();
@@ -985,6 +1065,427 @@ class GomokuGame {
       cancelAnimationFrame(this.hintAnimationId);
       this.hintAnimationId = null;
     }
+  }
+
+  // ==================== Replay Methods ====================
+
+  /** Enter replay mode and load the current game's move history */
+  startReplay() {
+    const history = this.board.getMoveHistory();
+    if (!history || history.length === 0) return;
+
+    this.inReplayMode = true;
+    this.replay.load(history.map((m) => ({ row: m.row, col: m.col, player: m.player })));
+    this.replay.onChange = (step, total, playing) => {
+      this.updateReplayUI(step, total, playing);
+      this.redrawReplayBoard();
+    };
+
+    // Show replay bar, hide normal controls
+    if (this.replayBar) this.replayBar.style.display = "";
+    if (this.replayBtn) this.replayBtn.style.display = "none";
+
+    // Disable normal control buttons
+    this.restartBtn.disabled = true;
+    this.undoBtn.disabled = true;
+    this.hintBtn.disabled = true;
+
+    // Clear board and show step 0
+    this.board.reset();
+    this.replay.next();
+    this.redrawReplayBoard();
+  }
+
+  /** Exit replay mode and restore normal game view */
+  exitReplayMode() {
+    if (!this.inReplayMode) return;
+    this.inReplayMode = false;
+    this.replay.stop();
+
+    if (this.replayBar) this.replayBar.style.display = "none";
+
+    // Re-enable normal controls
+    this.restartBtn.disabled = false;
+    this.hintBtn.disabled = false;
+  }
+
+  /** Wire up replay control bar buttons */
+  setupReplayControls() {
+    const bar = this.replayBar;
+    if (!bar) return;
+
+    this.replayStepDisplay = bar.querySelector(".replay-step");
+
+    const bind = (sel, fn) => {
+      const el = bar.querySelector(sel);
+      if (el) el.addEventListener("click", fn);
+    };
+
+    bind(".replay-first", () => { this.replay.first(); this.redrawReplayBoard(); });
+    bind(".replay-prev", () => { this.replay.prev(); this.redrawReplayBoard(); });
+    bind(".replay-toggle", () => {
+      this.replay.toggle();
+      this.redrawReplayBoard();
+    });
+    bind(".replay-next", () => { this.replay.next(); this.redrawReplayBoard(); });
+    bind(".replay-last", () => { this.replay.last(); this.redrawReplayBoard(); });
+    bind(".replay-exit", () => {
+      this.exitReplayMode();
+      this.resetGame();
+    });
+
+    // Speed buttons
+    const speedBtns = bar.querySelectorAll(".replay-speed");
+    speedBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const s = parseFloat(btn.dataset.speed);
+        this.replay.setSpeed(s);
+        speedBtns.forEach((b) => b.classList.toggle("active", b === btn));
+      });
+    });
+  }
+
+  /** Update the replay step counter and play/pause icon */
+  updateReplayUI(step, total, playing) {
+    if (this.replayStepDisplay) {
+      this.replayStepDisplay.textContent = `${step + 1} / ${total}`;
+    }
+    const toggleBtn = this.replayBar?.querySelector(".replay-toggle");
+    if (toggleBtn) {
+      toggleBtn.innerHTML = playing
+        ? '<i class="fas fa-pause"></i>'
+        : '<i class="fas fa-play"></i>';
+    }
+  }
+
+  /** Redraw the entire board showing replay state up to current move */
+  redrawReplayBoard() {
+    // Rebuild board state from replay
+    const replayBoard = this.replay.buildBoard();
+    // Swap in the replay board state temporarily for drawing
+    const origBoard = this.board;
+    this.board = replayBoard;
+    this.drawBoard();
+
+    // Draw move number on the last placed stone
+    const lastMove = this.replay.getCurrentMoveData();
+    if (lastMove) {
+      this.drawMoveNumber(lastMove.row, lastMove.col, this.replay.currentMove + 1);
+    }
+
+    // Restore original board reference
+    this.board = origBoard;
+  }
+
+  /** Draw a move number label on top of a stone */
+  drawMoveNumber(row, col, num) {
+    const cellSize = this.cellSize;
+    const x = BOARD_PADDING + col * cellSize;
+    const y = BOARD_PADDING + row * cellSize;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.font = `bold ${Math.round(cellSize * 0.35)}px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Determine stone color to choose text color
+    const moveIdx = this.replay.currentMove;
+    const player = this.replay.moves[moveIdx]?.player;
+    ctx.fillStyle = player === Player.BLACK ? "#ffffff" : "#000000";
+
+    ctx.fillText(String(num), x, y + 1);
+    ctx.restore();
+  }
+
+  // ==================== Online Mode Methods ====================
+
+  /** Set up the online lobby UI (create/join room) */
+  setupOnlineLobby() {
+    const lobby = this.onlineLobby;
+    if (!lobby) return;
+
+    const createBtn = lobby.querySelector("#createRoomBtn");
+    const joinBtn = lobby.querySelector("#joinRoomBtn");
+    const codeInput = lobby.querySelector("#roomCodeInput");
+
+    if (createBtn) {
+      createBtn.addEventListener("click", () => {
+        this.enterOnlineGameView();
+        this.online.connect();
+        // Wait for connection before creating room
+        const waitForConnection = () => {
+          if (this.online.connected) {
+            this.online.createRoom();
+            this.showOnlineStatus("正在创建房间...");
+          } else {
+            setTimeout(waitForConnection, 100);
+          }
+        };
+        waitForConnection();
+      });
+    }
+
+    if (joinBtn && codeInput) {
+      joinBtn.addEventListener("click", () => {
+        const code = codeInput.value.trim().toUpperCase();
+        if (!code) {
+          this.enterOnlineGameView();
+          this.showOnlineStatus("请输入房间码");
+          return;
+        }
+        this.enterOnlineGameView();
+        this.online.connect();
+        const waitForConnection = () => {
+          if (this.online.connected) {
+            this.online.joinRoom(code);
+            this.showOnlineStatus("正在加入房间...");
+          } else {
+            setTimeout(waitForConnection, 100);
+          }
+        };
+        waitForConnection();
+      });
+    }
+  }
+
+  /**
+   * Transition from start screen to game view for online mode.
+   * Hides the start screen and prepares the game board so status
+   * messages from createRoom/joinRoom are visible to the user.
+   */
+  enterOnlineGameView() {
+    if (this.startScreen) {
+      this.startScreen.style.display = "none";
+    }
+    if (this.gameModeDisplay) {
+      this.gameModeDisplay.textContent = "在线对战";
+    }
+    this.resetGame();
+  }
+
+  /** Set up all OnlineManager callbacks */
+  setupOnlineCallbacks() {
+    this.online.onRoomCreated = (code) => {
+      this.onlineRoomCode = code;
+      this.showOnlineStatus(`房间码: ${code}，等待对手加入...`);
+    };
+
+    this.online.onGameStart = (myColor) => {
+      this.onlineMyColor = myColor;
+      this.onlineOpponentReady = true;
+      this.hideOnlineStatus();
+      this.board.reset();
+      this.drawBoard();
+      this.updateUI();
+
+      // Update mode display with color info
+      if (this.gameModeDisplay) {
+        const colorName = myColor === "black" ? "黑子" : "白子";
+        this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
+      }
+    };
+
+    this.online.onOpponentMove = (move) => {
+      // Only apply if it's valid on our local board
+      if (this.board.makeMove(move.row, move.col)) {
+        this.drawStone(move.row, move.col, move.player, true);
+        this.updateUI();
+      }
+    };
+
+    this.online.onGameEnd = ({ winner, reason }) => {
+      let msg;
+      if (reason === "disconnect") {
+        msg = "对手断线，你赢了!";
+      } else if (winner === this.onlineMyColor) {
+        msg = "你赢了!";
+      } else if (winner === null) {
+        msg = "平局!";
+      } else {
+        msg = "你输了!";
+      }
+      this.showOnlineStatus(msg);
+    };
+
+    this.online.onOpponentDisconnect = () => {
+      this.showOnlineStatus("对手已断线，等待重连...");
+    };
+
+    this.online.onOpponentReconnect = () => {
+      this.hideOnlineStatus();
+    };
+
+    this.online.onGameRestart = () => {
+      this.resetGame();
+      this.hideOnlineStatus();
+    };
+
+    this.online.onError = (message) => {
+      this.showOnlineStatus(`错误: ${message}`);
+    };
+
+    this.online.onConnectionChange = (connected) => {
+      if (!connected && this.gameMode === "online") {
+        this.showOnlineStatus("连接已断开");
+      }
+    };
+
+    this.online.onGameState = (msg) => {
+      // Sync my color from the OnlineManager (set by room:joined or room:created)
+      this.onlineMyColor = this.online.myColor;
+
+      // Map server state to client GameState
+      let clientState;
+      if (msg.state === "playing") {
+        clientState = GameState.PLAYING;
+        this.hideOnlineStatus();
+        // Mark game as in-progress so clicks work
+        this.online.inGame = true;
+      } else if (msg.state === "finished") {
+        if (msg.winner === "black") {
+          clientState = GameState.BLACK_WIN;
+        } else if (msg.winner === "white") {
+          clientState = GameState.WHITE_WIN;
+        } else {
+          clientState = GameState.DRAW;
+        }
+        this.hideOnlineStatus();
+      } else {
+        // "waiting" — room created but opponent hasn't joined yet
+        clientState = GameState.PLAYING;
+        if (this.online.roomCode) {
+          this.showOnlineStatus(`房间码: ${this.online.roomCode}，等待对手加入...`);
+        }
+      }
+
+      // Update mode display with color info
+      if (this.gameModeDisplay && this.onlineMyColor) {
+        const colorName = this.onlineMyColor === "black" ? "黑子" : "白子";
+        this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
+      }
+
+      this.board.restoreState(msg.grid, msg.currentPlayer, clientState);
+      this.drawBoard();
+      this.updateUI();
+    };
+  }
+
+  /** Show an overlay status message on the board */
+  showOnlineStatus(message) {
+    if (!this.onlineOverlay) {
+      this.onlineOverlay = document.getElementById("onlineOverlay");
+    }
+    if (this.onlineOverlay) {
+      this.onlineOverlay.textContent = message;
+      this.onlineOverlay.classList.add("visible");
+    } else {
+      // Fallback: use game status
+      this.gameStatusElement.textContent = message;
+      this.gameStatusElement.style.color = "#FFA500";
+    }
+  }
+
+  /** Hide the online status overlay */
+  hideOnlineStatus() {
+    if (this.onlineOverlay) {
+      this.onlineOverlay.classList.remove("visible");
+    }
+    this.updateUI();
+  }
+
+  /** Show online lobby overlay on the game screen */
+  showOnlineLobby() {
+    this.showOnlineStatus("选择操作：创建房间或输入房间码加入");
+
+    // Create lobby overlay content if not already created
+    let lobbyOverlay = document.getElementById("onlineLobbyOverlay");
+    if (!lobbyOverlay) {
+      lobbyOverlay = document.createElement("div");
+      lobbyOverlay.id = "onlineLobbyOverlay";
+      lobbyOverlay.className = "online-lobby-overlay";
+      lobbyOverlay.innerHTML = `
+        <div class="lobby-overlay-card">
+          <h3>在线对战</h3>
+          <div class="lobby-overlay-actions">
+            <button class="btn btn-primary" id="overlayCreateBtn">
+              <i class="fas fa-plus"></i> 创建房间
+            </button>
+            <div class="join-room">
+              <input type="text" id="overlayRoomCodeInput" placeholder="房间码" maxlength="4" />
+              <button class="btn btn-secondary" id="overlayJoinBtn">
+                <i class="fas fa-sign-in-alt"></i> 加入
+              </button>
+            </div>
+          </div>
+          <button class="btn btn-secondary lobby-back-btn" id="overlayBackBtn">
+            <i class="fas fa-arrow-left"></i> 返回
+          </button>
+        </div>
+      `;
+      this.canvas.parentElement.appendChild(lobbyOverlay);
+    }
+
+    lobbyOverlay.style.display = "flex";
+    this.hideOnlineStatus();
+
+    // Wire up lobby overlay buttons
+    const createBtn = document.getElementById("overlayCreateBtn");
+    const joinBtn = document.getElementById("overlayJoinBtn");
+    const codeInput = document.getElementById("overlayRoomCodeInput");
+    const backBtn = document.getElementById("overlayBackBtn");
+
+    // Remove old listeners by cloning
+    const freshCreate = createBtn.cloneNode(true);
+    createBtn.parentNode.replaceChild(freshCreate, createBtn);
+    const freshJoin = joinBtn.cloneNode(true);
+    joinBtn.parentNode.replaceChild(freshJoin, joinBtn);
+    const freshBack = backBtn.cloneNode(true);
+    backBtn.parentNode.replaceChild(freshBack, backBtn);
+
+    freshCreate.addEventListener("click", () => {
+      this.online.connect();
+      lobbyOverlay.style.display = "none";
+      const waitForConnection = () => {
+        if (this.online.connected) {
+          this.online.createRoom();
+        } else {
+          setTimeout(waitForConnection, 100);
+        }
+      };
+      waitForConnection();
+    });
+
+    freshJoin.addEventListener("click", () => {
+      const code = codeInput.value.trim().toUpperCase();
+      if (!code) {
+        this.showOnlineStatus("请输入房间码");
+        return;
+      }
+      this.online.connect();
+      lobbyOverlay.style.display = "none";
+      const waitForConnection = () => {
+        if (this.online.connected) {
+          this.online.joinRoom(code);
+        } else {
+          setTimeout(waitForConnection, 100);
+        }
+      };
+      waitForConnection();
+    });
+
+    freshBack.addEventListener("click", () => {
+      lobbyOverlay.style.display = "none";
+      this.gameMode = "pvp";
+      this.online.disconnect();
+      // Show start screen again
+      if (this.startScreen) {
+        this.startScreen.style.display = "flex";
+        this.pvpBtn.classList.add("selected");
+        this.aiBtn.classList.remove("selected");
+        if (this.onlineBtn) this.onlineBtn.classList.remove("selected");
+      }
+    });
   }
 }
 
