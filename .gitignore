@@ -57,6 +57,10 @@ __snapshots__/
 .claude/skills/
 .claude/settings.local.json
 
+# Codex 兼容（本地使用，不上传）
+.agents/
+AGENTS.md
+
 # Claude Code 生成的临时审查/报告文件
 code-review*.md
 test-report*.md

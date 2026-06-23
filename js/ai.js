@@ -107,16 +107,24 @@ export class AIPlayer {
     let bestScore = -Infinity;
     let bestMove = validMoves[0];
 
-    for (const move of validMoves) {
-      this.board.makeMove(move.row, move.col);
+    const savedHistoryLen = this.board.getMoveHistory().length;
 
-      const score = -this.alphaBeta(this.board, 1, -Infinity, Infinity);
+    try {
+      for (const move of validMoves) {
+        this.board.makeMove(move.row, move.col);
 
-      this.board.undo();
+        const score = -this.alphaBeta(this.board, 1, -Infinity, Infinity);
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
+        this.board.undo();
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = move;
+        }
+      }
+    } finally {
+      while (this.board.getMoveHistory().length > savedHistoryLen) {
+        this.board.undo();
       }
     }
 
@@ -145,6 +153,8 @@ export class AIPlayer {
 
     let bestMove = validMoves[0];
     const MAX_DEPTH = 7;
+
+    const savedHistoryLen = this.board.getMoveHistory().length;
 
     try {
       for (let depth = 1; depth <= MAX_DEPTH; depth++) {
@@ -188,6 +198,11 @@ export class AIPlayer {
     } catch (e) {
       if (!(e instanceof SearchTimeout)) throw e;
       // Time expired — bestMove holds the result from the last completed depth
+    } finally {
+      // Restore board: undo any phantom stones left by interrupted search
+      while (this.board.getMoveHistory().length > savedHistoryLen) {
+        this.board.undo();
+      }
     }
 
     return bestMove;
