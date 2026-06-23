@@ -838,11 +838,20 @@ class GomokuGame {
 
     // Use setTimeout to allow UI to update before AI computation
     setTimeout(() => {
-      const move = this.aiPlayer.getMove();
-      if (move && this.board.makeMove(move.row, move.col)) {
-        this.drawStone(move.row, move.col, this.aiPlayerColor, true);
+      try {
+        const move = this.aiPlayer.getMove();
+        if (move && this.board.makeMove(move.row, move.col)) {
+          this.drawStone(move.row, move.col, this.aiPlayerColor, true);
+          this.updateUI();
+          this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
+        }
+      } catch (e) {
+        console.error("AI move failed:", e);
+        // Redraw board to clear any phantom stones from corrupted search
+        this.drawBoard();
+      } finally {
+        // Always restore UI state so "AI 思考中..." doesn't persist
         this.updateUI();
-        this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
       }
     }, 100);
   }
