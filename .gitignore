@@ -25,6 +25,7 @@ coverage/
 dist/
 build/
 out/
+public/
 
 # 缓存
 .cache/
@@ -68,3 +69,4 @@ test-report*.md
 # 项目特定
 docs/superpowers
 CLAUDE.local.md
+cloudflared.exe
