@@ -106,67 +106,106 @@ waiting ──(双方加入)──→ playing ──(五连/满盘)──→ fin
 ### 架构
 
 ```
-Netlify (静态前端)           Render / Railway (WebSocket 服务器)
-  ┌──────────────────┐       ┌────────────────────────┐
-  │  index.html       │       │  server/index.js       │
-  │  js/*.js          │  ←→  │  WebSocket (wss://...) │
-  │  css/*.css        │       │  ws 库                 │
-  └──────────────────┘       └────────────────────────┘
+Netlify (静态前端)           WebSocket 服务器
+  ┌──────────────────┐       ┌───────────────────────────────┐
+  │  index.html       │       │  Cloudflare Workers（推荐）    │
+  │  js/*.js          │  ←→  │  或 Render / Tunnel           │
+  │  css/*.css        │       │  WebSocket (wss://...)       │
+  └──────────────────┘       └───────────────────────────────┘
 ```
 
 > **为什么不能只部署到 Netlify？** Netlify 仅托管静态文件，不运行 Node.js 服务。
-> WebSocket 服务器需要一台能长期运行进程的机器。
+> WebSocket 服务器需要一台能长期运行进程的机器（或 Cloudflare Workers）。
 
-### 步骤 1：部署 WebSocket 服务器（以 Render 为例）
+---
 
-[Render](https://render.com) 免费套餐支持 WebSocket，适合此项目。
+### 方案对比
 
-1. 将代码推送到 GitHub（确保包含 `package.json` 和 `server/` 目录）
-2. 在 Render Dashboard 点击 **New + → Web Service**
-3. 连接你的 GitHub 仓库
-4. 配置：
-   - **Name**: `gomoku-server`
-   - **Environment**: `Node`
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-5. 点击 **Create Web Service**
-6. 部署成功后，你会得到一个 URL，如 `https://gomoku-server.onrender.com`
+| 方案 | 费用 | 稳定性 | 需要本机 | 难度 |
+|------|------|--------|---------|------|
+| 🌟 **Cloudflare Workers** | 免费 | ★★★★ | 否 | 低 |
+| Cloudflare Tunnel | 免费 | ★★★ | 是 | 低 |
+| Zeabur / Render | 有免费额度 | ★★★★★ | 否 | 低 |
 
-> 同样适用于 [Railway](https://railway.app)、[Fly.io](https://fly.io) 等平台。
+---
 
-### 步骤 2：配置前端连接地址
+### 方案 A：Cloudflare Workers ✅（推荐）
 
-部署好服务器后，有两种方式告诉前端去哪里连接：
+**零成本，不需要服务器，不需要备案。** 代码在 `workers/` 目录下。
 
-**方式 A：直接修改 `js/config.js`（推荐）**
+> ⚠️ 单 Worker 模式，房间状态在内存中。同地区玩家通常路由到同一实例，对局不受影响。极端情况可能因 Worker 重启丢失对局。
+
+#### 部署步骤
+
+1. 注册 [Cloudflare](https://cloudflare.com) 账号（免费）
+2. 在项目根目录执行：
+
+```bash
+cd workers
+npx wrangler deploy
+```
+
+3. 首次部署按提示登录 Cloudflare 账号
+4. 部署成功后，你会得到一个 URL，如：
+   ```
+   https://gomoku-server.你的子域名.workers.dev
+   ```
+
+> 如果 `wrangler` 命令找不到：`npm install -g wrangler`
+
+#### 前端配置
+
+把 Worker 地址填到 `js/config.js`：
 
 ```js
-export const CONFIG = {
-  wsUrl: "wss://gomoku-server.onrender.com", // 替换为你的服务器地址
-};
+wsUrl: "https://gomoku-server.你的子域名.workers.dev",
 ```
 
-**方式 B：在 `index.html` 的 `<head>` 中设置全局变量（不修改源码）**
+> 填 `https://` 就行，代码里会自动转为 `wss://` WebSocket 地址。
 
-```html
-<script>
-  window.__GOMOKO_WS_URL = "wss://gomoku-server.onrender.com";
-</script>
+#### 重新部署前端
+
+```bash
+git add js/config.js
+git commit -m "config: 指向 Cloudflare Workers"
+git push
+# Netlify 自动重新部署
 ```
 
-### 步骤 3：部署前端到 Netlify
+---
 
-1. 将代码推送到 GitHub
-2. 在 Netlify 导入该仓库
-3. 构建命令：留空（纯静态项目）
-4. 发布目录：`/`（根目录）
-5. 部署完成后即可访问
+### 方案 B：本机 + Cloudflare Tunnel（零成本）
 
-> 💡 前端可以部署在任何静态托管平台：Netlify、Vercel、Cloudflare Pages、GitHub Pages 等。
+适合临时玩。把本机暴露到公网，不需要任何云服务。
+
+1. 本机启动游戏服务：`npm start`
+2. 启动 Tunnel：`cloudflared tunnel --url http://localhost:8000`
+3. 拿到 `https://xxx.trycloudflare.com` 地址
+4. 填到 `js/config.js`：
+
+```js
+wsUrl: "wss://xxx.trycloudflare.com",
+```
+
+> ⚠️ Tunnel 关闭后地址失效，下次重启地址会变。电脑关机就不能玩。
+
+---
+
+### 方案 C：Zeabur / Render（国内可选）
+
+[Zeabur](https://zeabur.cn) 国内可访问，部署方式：
+
+1. 代码推送到 GitHub
+2. Zeabur → 创建项目 → 导入 GitHub 仓库
+3. 供应商选阿里云或腾讯云
+4. 启动命令：`npm start`
+5. 拿到 `https://xxx.zeabur.app` 地址
+
+---
 
 ### 本地开发
 
-本地开发无需任何配置修改，`npm start` 同时启动 HTTP 和 WebSocket：
+本地开发无需任何配置，`wsUrl: null` 自动使用 `location.host`：
 
 ```bash
 # 启动开发服务器（HTTP + WebSocket，端口 8000）
@@ -174,5 +213,3 @@ npm start
 
 # 浏览器打开 http://localhost:8000
 ```
-
-前后端同端口，`js/config.js` 的 `wsUrl: null` 会自动使用 `location.host` 完成连接。
