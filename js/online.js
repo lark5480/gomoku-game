@@ -39,11 +39,15 @@ export class OnlineManager {
       this.ws = null;
     }
 
-    const serverUrl =
+    // 确定 WebSocket 服务器地址
+    // 优先级：全局变量 > CONFIG.wsUrl > 自动 location.host
+    const rawUrl =
       window.__GOMOKO_WS_URL ||
       CONFIG.wsUrl ||
       `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
-    this.ws = new WebSocket(serverUrl);
+    // 确保协议正确（允许用户填 https:// 自动转 wss://）
+    const wsUrl = rawUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       this.connected = true;
