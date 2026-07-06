@@ -23,26 +23,31 @@ const wsRoomMap = new Map();
 /** @type {Map<WebSocket, number>} */
 const wsIndexMap = new Map();
 
-// ==================== 房间清理定时器 ====================
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, room] of rooms) {
-    if (now - room.lastActivity > ROOM_TTL) {
-      room.broadcast({ type: "room:closed", reason: "timeout" });
-      for (const p of room.players) {
-        if (p) {
-          try {
-            p.close();
-          } catch {}
-        }
-      }
-      rooms.delete(code);
-    }
-  }
-}, 60 * 1000);
-
 // ==================== Worker 入口 ====================
+
+let cleanupStarted = false;
+
+/** 启动房间清理定时器（必须在 feth 处理函数内调用） */
+function startCleanupTimer() {
+  if (cleanupStarted) return;
+  cleanupStarted = true;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, room] of rooms) {
+      if (now - room.lastActivity > ROOM_TTL) {
+        room.broadcast({ type: "room:closed", reason: "timeout" });
+        for (const p of room.players) {
+          if (p) {
+            try {
+              p.close();
+            } catch {}
+          }
+        }
+        rooms.delete(code);
+      }
+    }
+  }, 60 * 1000);
+}
 
 export default {
   /**
@@ -50,6 +55,9 @@ export default {
    * @returns {Promise<Response>}
    */
   async fetch(request) {
+    // 确保清理定时器已启动（Worker 限制：全局作用域不能调 setInterval）
+    startCleanupTimer();
+
     // CORS 预检
     if (request.method === "OPTIONS") {
       return new Response(null, {

@@ -22,5 +22,5 @@ export const CONFIG = {
    * null = 自动使用 location.host（本地开发）
    * 生产环境改为你的服务器地址，如 "wss://xxx.trycloudflare.com"
    */
-  wsUrl: "wss://logos-eight-standard-neck.trycloudflare.com",
+  wsUrl: "https://gomoku-server.gomoku-game.workers.dev",
 };
