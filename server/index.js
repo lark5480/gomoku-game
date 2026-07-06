@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { WebSocketServer } from "ws";
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 const BOARD_SIZE = 15;
 const ROOM_TTL = 10 * 60 * 1000; // 10 minutes
 const RECONNECT_TIMEOUT = 30 * 1000; // 30 seconds

@@ -3,6 +3,8 @@
  * Handles WebSocket connection, room management, and move synchronization
  */
 
+import { CONFIG } from "./config.js";
+
 export class OnlineManager {
   constructor() {
     this.ws = null;
@@ -37,8 +39,11 @@ export class OnlineManager {
       this.ws = null;
     }
 
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    this.ws = new WebSocket(`${protocol}//${location.host}`);
+    const serverUrl =
+      window.__GOMOKO_WS_URL ||
+      CONFIG.wsUrl ||
+      `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
+    this.ws = new WebSocket(serverUrl);
 
     this.ws.onopen = () => {
       this.connected = true;
