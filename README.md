@@ -23,12 +23,52 @@ python -m http.server 8000
 
 - **双人对战** — 同屏轮流落子
 - **AI 对战** — 三种难度（简单/中等/困难），Alpha-Beta 搜索 + 置换表
-- **在线对战** — WebSocket 房间制，支持局域网联机、断线重连、重开一局
+- **在线对战** — WebSocket 房间制，支持断线重连、重开一局
 - **棋谱回放** — 对局结束后逐步回放，支持 1x/2x/4x 调速
 - AI 智能提示、高亮预览
 - 棋子放置动画、获胜高亮
 - 撤销落子（AI 模式自动撤两步）
 - 响应式设计（桌面/移动端）
+
+## 在线对战
+
+游戏自带 WebSocket 服务器，默认跟前端同端口启动。在线对战需要**两台设备都能访问服务端**，有三种方式：
+
+### 局域网（最简单）
+
+同事朋友在同一个 WiFi 下：
+
+```bash
+npm start
+```
+
+访问 `http://你的IP:8000`（如 `http://192.168.1.100:8000`），确保防火墙放行 8000 端口。
+
+### Cloudflare Tunnel（公网对战，免费）
+
+你和朋友不在同一网络时：
+
+```bash
+# 终端 1：启动游戏服务
+npm start
+
+# 终端 2：暴露到公网
+cloudflared tunnel --url http://localhost:8000
+```
+
+拿到 Tunnel 地址（如 `https://xxx.trycloudflare.com`），修改 `js/config.js`：
+
+```js
+wsUrl: "wss://xxx.trycloudflare.com",
+```
+
+推送到 GitHub 让 Netlify 重新部署（或直接改完本地 `npm start` 访问 `localhost:8000`）。
+
+> ⚠️ Tunnel 地址每次重启都会变，需要重新配置。不需在线对战时关掉 Tunnel 就行。
+
+### 部署到云服务器
+
+将 `server/` 部署到阿里云/腾讯云等平台，修改 `js/config.js` 指向服务器地址。
 
 ## 项目结构
 

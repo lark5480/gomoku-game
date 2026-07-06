@@ -19,8 +19,8 @@
 export const CONFIG = {
   /**
    * WebSocket server URL.
-   * null = 自动使用 location.host（本地开发）
-   * 生产环境改为你的服务器地址，如 "wss://xxx.trycloudflare.com"
+   * null = 自动使用 location.host（本地开发 + Cloudflare 部署均适用）
+   * 如需分离部署，填入独立地址如 "wss://ws.example.com"
    */
-  wsUrl: "https://gomoku-server.gomoku-game.workers.dev",
+  wsUrl: null,
 };
