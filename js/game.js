@@ -1400,8 +1400,17 @@ class GomokuGame {
       this.hideOnlineStatus();
     };
 
-    this.online.onGameRestart = () => {
+    this.online.onGameRestart = (myColor) => {
+      // 换先：更新本局颜色
+      if (myColor === "black" || myColor === "white") {
+        this.onlineMyColor = myColor;
+      }
       this.resetGame();
+      // 刷新模式显示中的颜色信息
+      if (this.gameModeDisplay) {
+        const colorName = this.onlineMyColor === "black" ? "黑子" : "白子";
+        this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
+      }
       this.hideOnlineStatus();
     };
 
