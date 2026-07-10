@@ -173,7 +173,11 @@ export class OnlineManager {
 
       case "game:restart":
         this.inGame = true;
-        this._notify("onGameRestart");
+        // 换先：服务端告知本局新颜色
+        if (msg.color === "black" || msg.color === "white") {
+          this.myColor = msg.color;
+        }
+        this._notify("onGameRestart", this.myColor);
         break;
 
       case "room:closed":

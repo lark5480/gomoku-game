@@ -82,6 +82,7 @@ class Room {
     this.currentPlayer = "black"; // black goes first
     this.state = "waiting"; // waiting | playing | finished
     this.winner = null;
+    this.colorSwap = false; // 重开换先：翻转两名玩家的颜色
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
     this.disconnectTimer = null;
@@ -97,9 +98,12 @@ class Room {
 
   playerColor(ws) {
     const idx = this.playerIndex(ws);
-    if (idx === 0) return "black";
-    if (idx === 1) return "white";
-    return null;
+    let color;
+    if (idx === 0) color = "black";
+    else if (idx === 1) color = "white";
+    else return null;
+    // colorSwap 为 true 时翻转先后手
+    return this.colorSwap ? (color === "black" ? "white" : "black") : color;
   }
 
   opponentOf(ws) {
@@ -346,6 +350,9 @@ function handleMessage(ws, msg) {
       const room = wsRoomMap.get(ws);
       if (!room || room.state !== "finished") return;
 
+      // 换先：翻转先后手颜色
+      room.colorSwap = !room.colorSwap;
+
       // Reset room state for a new game
       room.grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
       room.currentPlayer = "black";
@@ -358,9 +365,13 @@ function handleMessage(ws, msg) {
         room.disconnectTimer = null;
       }
 
-      // Notify both players — black goes first
-      room.broadcast({ type: "game:restart" });
-      console.log(`Room ${room.code}: game restarted`);
+      // 分别告知每位玩家其新颜色（换先后颜色不同，不能广播同一条消息）
+      for (const p of room.players) {
+        if (p && p.readyState === 1) {
+          room.send(p, { type: "game:restart", color: room.playerColor(p) });
+        }
+      }
+      console.log(`Room ${room.code}: game restarted (colorSwap: ${room.colorSwap})`);
       break;
     }
 
