@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>五子棋 - 连五游戏</title>
+    <script>
+      // 主题注入（放 body 渲染前，避免闪屏）
+      (function () {
+        var key = "gomoku-theme";
+        var theme = localStorage.getItem(key);
+        if (!theme) {
+          theme =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
     <link rel="stylesheet" href="css/style.css" />
     <link
       rel="stylesheet"
@@ -14,6 +29,9 @@
     <!-- 开始界面 -->
     <div class="start-screen" id="startScreen">
       <div class="start-card">
+        <button class="theme-toggle" id="themeToggleStart" aria-label="切换外观">
+          <span class="theme-toggle-icon"></span>
+        </button>
         <h1><i class="fas fa-gamepad"></i> 五子棋</h1>
         <p class="start-subtitle">连五游戏 - 策略游戏</p>
 
@@ -71,6 +89,9 @@
       <header>
         <h1><i class="fas fa-gamepad"></i> 五子棋</h1>
         <p class="subtitle">连五游戏 - 策略游戏</p>
+        <button class="theme-toggle" id="themeToggle" aria-label="切换外观">
+          <span class="theme-toggle-icon"></span>
+        </button>
       </header>
 
       <main>
