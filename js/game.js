@@ -13,6 +13,11 @@ import {
   BOARD_PADDING,
   BOARD_SIZE,
 } from "./utils.js";
+import {
+  initTheme,
+  toggleTheme,
+  readCanvasPalette,
+} from "./theme.js";
 
 // Development mode switch
 const IS_DEV = false; // Set to false for production, true for development
@@ -25,6 +30,23 @@ function debugLog(...args) {
   if (IS_DEV) {
     console.log(...args);
   }
+}
+
+/**
+ * 把 hex 颜色（#rgb / #rrggbb）转成 rgba(r,g,b,alpha)
+ * @param {string} hex - 形如 #FFD700 的颜色
+ * @param {number} alpha - 0~1
+ * @returns {string} rgba(...) 字符串
+ */
+function toRgba(hex, alpha) {
+  let h = hex.replace("#", "");
+  if (h.length === 3) {
+    h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  }
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 class GomokuGame {
@@ -108,6 +130,10 @@ class GomokuGame {
    * Initialize the game
    */
   init() {
+    // 初始化主题 + Canvas 调色板缓存
+    initTheme();
+    this.palette = readCanvasPalette();
+
     // Set canvas size
     this.setCanvasSize();
 
@@ -201,6 +227,20 @@ class GomokuGame {
     }
     this.setupOnlineLobby();
     this.setupOnlineCallbacks();
+
+    // 主题切换按钮（主页 + 开始界面各一个，共用同一切换逻辑）
+    this.themeToggle = document.getElementById("themeToggle");
+    this.themeToggleStart = document.getElementById("themeToggleStart");
+    const onToggle = () => this.handleThemeToggle();
+    if (this.themeToggle) this.themeToggle.addEventListener("click", onToggle);
+    if (this.themeToggleStart) this.themeToggleStart.addEventListener("click", onToggle);
+  }
+
+  /** 切换主题：更新调色板缓存并重绘棋盘 */
+  handleThemeToggle() {
+    toggleTheme();
+    this.palette = readCanvasPalette();
+    this.drawBoard();
   }
 
   /**
@@ -393,14 +433,14 @@ class GomokuGame {
     ctx.clearRect(0, 0, width, height);
 
     // Draw background
-    ctx.fillStyle = "#deb887";
+    ctx.fillStyle = this.palette.board;
     ctx.fillRect(0, 0, width, height);
 
     // Calculate cell size based on current canvas size
     const cellSize = this.cellSize;
 
     // Draw grid lines
-    ctx.strokeStyle = "#000000";
+    ctx.strokeStyle = this.palette.grid;
     ctx.lineWidth = 1;
 
     // Draw vertical lines
@@ -459,7 +499,7 @@ class GomokuGame {
   drawStarPoints(ctx, cellSize) {
     const points = [3, 7, 11]; // Positions for 15x15 board
 
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = this.palette.grid;
 
     for (const row of points) {
       for (const col of points) {
@@ -510,18 +550,18 @@ class GomokuGame {
     );
 
     if (player === Player.BLACK) {
-      gradient.addColorStop(0, "#666666");
-      gradient.addColorStop(0.7, "#000000");
-      gradient.addColorStop(1, "#000000");
+      gradient.addColorStop(0, this.palette.black[0]);
+      gradient.addColorStop(0.7, this.palette.black[1]);
+      gradient.addColorStop(1, this.palette.black[1]);
     } else {
-      gradient.addColorStop(0, "#FFFFFF");
-      gradient.addColorStop(0.7, "#CCCCCC");
-      gradient.addColorStop(1, "#AAAAAA");
+      gradient.addColorStop(0, this.palette.white[0]);
+      gradient.addColorStop(0.7, this.palette.white[1]);
+      gradient.addColorStop(1, this.palette.white[2]);
     }
 
     // Draw stone shadow
     ctx.save();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+    ctx.shadowColor = this.palette.shadow;
     ctx.shadowBlur = 10;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
@@ -601,7 +641,7 @@ class GomokuGame {
    */
   highlightWinningStone(ctx, x, y, radius) {
     ctx.save();
-    ctx.strokeStyle = "#FFD700";
+    ctx.strokeStyle = this.palette.win;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
@@ -620,8 +660,8 @@ class GomokuGame {
     ctx.save();
     ctx.fillStyle =
       this.board.getCurrentPlayer() === Player.BLACK
-        ? "rgba(0, 0, 0, 0.3)"
-        : "rgba(255, 255, 255, 0.3)";
+        ? this.palette.hoverB
+        : this.palette.hoverW;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -657,15 +697,13 @@ class GomokuGame {
       radius * 2,
     );
 
-    if (this.board.getCurrentPlayer() === Player.BLACK) {
-      gradient.addColorStop(0, "rgba(255, 215, 0, 0.8)");
-      gradient.addColorStop(0.5, "rgba(255, 215, 0, 0.4)");
-      gradient.addColorStop(1, "rgba(255, 215, 0, 0)");
-    } else {
-      gradient.addColorStop(0, "rgba(0, 191, 255, 0.8)");
-      gradient.addColorStop(0.5, "rgba(0, 191, 255, 0.4)");
-      gradient.addColorStop(1, "rgba(0, 191, 255, 0)");
-    }
+    const hintColor =
+      this.board.getCurrentPlayer() === Player.BLACK
+        ? this.palette.hintB
+        : this.palette.hintW;
+    gradient.addColorStop(0, toRgba(hintColor, 0.8));
+    gradient.addColorStop(0.5, toRgba(hintColor, 0.4));
+    gradient.addColorStop(1, toRgba(hintColor, 0));
 
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -677,10 +715,11 @@ class GomokuGame {
    * Draw inner circle for hint
    */
   drawHintInnerCircle(x, y, radius, ctx) {
-    ctx.fillStyle =
+    const hintColor =
       this.board.getCurrentPlayer() === Player.BLACK
-        ? "rgba(255, 215, 0, 0.8)"
-        : "rgba(0, 191, 255, 0.8)";
+        ? this.palette.hintB
+        : this.palette.hintW;
+    ctx.fillStyle = toRgba(hintColor, 0.8);
     ctx.beginPath();
     ctx.arc(x, y, radius * 0.8, 0, Math.PI * 2);
     ctx.fill();
@@ -690,10 +729,11 @@ class GomokuGame {
    * Draw pulsing effect for hint
    */
   drawHintPulse(x, y, radius, ctx) {
-    ctx.strokeStyle =
+    const hintColor =
       this.board.getCurrentPlayer() === Player.BLACK
-        ? "rgba(255, 215, 0, 1)"
-        : "rgba(0, 191, 255, 1)";
+        ? this.palette.hintB
+        : this.palette.hintW;
+    ctx.strokeStyle = toRgba(hintColor, 1);
     ctx.lineWidth = 3;
     const pulseRadius = radius * 1.8 * (1 + 0.3 * Math.sin(Date.now() / 500));
     ctx.beginPath();
@@ -1064,7 +1104,7 @@ class GomokuGame {
     );
 
     // Redraw grid lines that were cleared
-    this.ctx.strokeStyle = "#000000";
+    this.ctx.strokeStyle = this.palette.grid;
     this.ctx.lineWidth = 1;
 
     // Vertical line
