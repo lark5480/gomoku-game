@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-此文件为 Claude Code (claude.ai/code) 提供在此代码库中工作的指导。
+此文件为 Codex (Codex.ai/code) 提供在此代码库中工作的指导。
 
 ## 项目概述
 

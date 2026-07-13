@@ -30,6 +30,11 @@ python -m http.server 8000
 - 撤销落子（AI 模式自动撤两步）
 - 响应式设计（桌面/移动端）
 
+## 文档
+
+- [开发指南](docs/development.md) — 架构详解、开发约定、FAQ
+- [在线对战技术文档](docs/online-mode.md) — 通信协议、部署方案
+
 ## 在线对战
 
 游戏自带 WebSocket 服务器，默认跟前端同端口启动。在线对战需要**两台设备都能访问服务端**，有三种方式：
@@ -62,7 +67,7 @@ cloudflared tunnel --url http://localhost:8000
 wsUrl: "wss://xxx.trycloudflare.com",
 ```
 
-推送到 GitHub 让 Netlify 重新部署（或直接改完本地 `npm start` 访问 `localhost:8000`）。
+改完本地 `npm start` 访问 `localhost:8000` 即可。
 
 > ⚠️ Tunnel 地址每次重启都会变，需要重新配置。不需在线对战时关掉 Tunnel 就行。
 
