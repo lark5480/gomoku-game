@@ -129,9 +129,11 @@ Netlify (静态前端)           WebSocket 服务器
 
 ---
 
-### 方案 A：Cloudflare Workers ✅（推荐）
+### 方案 A：Cloudflare Workers（推荐，🚧 未实现）
 
-**零成本，不需要服务器，不需要备案。** 代码在 `workers/` 目录下。
+**零成本，不需要服务器，不需要备案。**
+
+> 🚧 **此方案尚未实现**——`workers/` 目录目前不存在。当前可用的部署方式是方案 B（Cloudflare Tunnel）或方案 C（云服务器）。Workers 方案预留给未来可能的 Cloudflare Workers 迁移。
 
 > ⚠️ 单 Worker 模式，房间状态在内存中。同地区玩家通常路由到同一实例，对局不受影响。极端情况可能因 Worker 重启丢失对局。
 

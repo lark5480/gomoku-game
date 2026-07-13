@@ -1483,6 +1483,7 @@ class GomokuGame {
   hideOnlineStatus() {
     if (this.onlineOverlay) {
       this.onlineOverlay.classList.remove("visible");
+      this.onlineOverlay.textContent = "";
     }
     this.updateUI();
   }
@@ -1589,4 +1590,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Make game accessible from console for debugging
   window.gomokuGame = game;
+
+  // E2E test hook: mirror board grid so tests can assert stone state.
+  // Cheap (15x15 array copy @ 5Hz) and inert for normal gameplay.
+  setInterval(() => {
+    window.__gomokuTestGrid = game.board.grid.map((r) => [...r]);
+  }, 200);
 });
