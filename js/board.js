@@ -3,25 +3,20 @@
  * Manages game state and logic
  */
 
-import {
-  BOARD_SIZE,
-  isValidPosition,
-  getOppositePlayer,
-  clone2DArray,
-} from "./utils.js";
+import { BOARD_SIZE, isValidPosition, getOppositePlayer, clone2DArray } from './utils.js';
 
 // Game states
 export const GameState = {
-  PLAYING: "playing",
-  BLACK_WIN: "black_win",
-  WHITE_WIN: "white_win",
-  DRAW: "draw",
+  PLAYING: 'playing',
+  BLACK_WIN: 'black_win',
+  WHITE_WIN: 'white_win',
+  DRAW: 'draw',
 };
 
 // Players
 export const Player = {
-  BLACK: "black",
-  WHITE: "white",
+  BLACK: 'black',
+  WHITE: 'white',
 };
 
 // Directions for win checking
@@ -86,9 +81,7 @@ export class Board {
     // Check for win
     if (this.checkWin(row, col)) {
       this.gameState =
-        this.currentPlayer === Player.BLACK
-          ? GameState.BLACK_WIN
-          : GameState.WHITE_WIN;
+        this.currentPlayer === Player.BLACK ? GameState.BLACK_WIN : GameState.WHITE_WIN;
     } else if (this.isBoardFull()) {
       this.gameState = GameState.DRAW;
     } else {
@@ -266,30 +259,24 @@ export class Board {
   }
 
   /**
-   * Get all valid moves (empty positions adjacent to existing stones)
+   * Get all valid moves (empty positions near existing stones)
+   * @param {number} radius - Chebyshev distance from existing stones (default 1)
    * @returns {Array} Array of {row, col} objects
    */
-  getValidMoves() {
+  getValidMoves(radius = 1) {
     const moves = new Set();
-    const directions = [
-      [-1, -1],
-      [-1, 0],
-      [-1, 1],
-      [0, -1],
-      [0, 1],
-      [1, -1],
-      [1, 0],
-      [1, 1],
-    ];
 
     for (let row = 0; row < this.size; row++) {
       for (let col = 0; col < this.size; col++) {
         if (this.grid[row][col] !== null) {
-          for (const [dr, dc] of directions) {
-            const nr = row + dr;
-            const nc = col + dc;
-            if (isValidPosition(nr, nc) && this.grid[nr][nc] === null) {
-              moves.add(`${nr},${nc}`);
+          for (let dr = -radius; dr <= radius; dr++) {
+            for (let dc = -radius; dc <= radius; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nr = row + dr;
+              const nc = col + dc;
+              if (isValidPosition(nr, nc) && this.grid[nr][nc] === null) {
+                moves.add(`${nr},${nc}`);
+              }
             }
           }
         }
@@ -297,7 +284,7 @@ export class Board {
     }
 
     return Array.from(moves).map((key) => {
-      const [row, col] = key.split(",").map(Number);
+      const [row, col] = key.split(',').map(Number);
       return { row, col };
     });
   }
@@ -309,9 +296,7 @@ export class Board {
    * @returns {boolean} True if cell is a winning stone
    */
   isWinningStone(row, col) {
-    return this.winningStones.some(
-      (stone) => stone.row === row && stone.col === col,
-    );
+    return this.winningStones.some((stone) => stone.row === row && stone.col === col);
   }
 
   /**
@@ -343,7 +328,7 @@ export class Board {
 
     if (counts.black > 0 && counts.white > 0) return 0;
 
-    const player = counts.black > 0 ? "black" : "white";
+    const player = counts.black > 0 ? 'black' : 'white';
     const count = counts[player];
     const openEnds = (line[0] === null ? 1 : 0) + (line[4] === null ? 1 : 0);
 

@@ -28,9 +28,9 @@ utils.js  ←── board.js  ←── ai.js
 
 | 方法 | 说明 |
 |------|------|
-| `makeMove(row, col)` | 落子，返回 `true`/`false`，自动切换回合、检测胜负 |
+| `makeMove(row, col)` | 落子，返回 `true`/`false`，自动检测胜负；**获胜时不切换回合**（currentPlayer 停留在胜方，AI 的 negamax 终端约定依赖这一点） |
 | `undo()` | 撤销最近一步，恢复回合和状态 |
-| `getValidMoves()` | 返回**邻接已有棋子的空位**（非全部 225 个位置） |
+| `getValidMoves(radius = 1)` | 返回**已有棋子切比雪夫距离 radius 内的空位**（非全部 225 个位置）；AI 使用 radius 2 以覆盖跳型点 |
 | `restoreState(grid, player, state)` | 从服务器数据恢复棋盘（在线重连用），不保留历史 |
 | `isWinningStone(row, col)` | 判断某颗棋子是否属于获胜五连 |
 | `setCellDirect(row, col, player)` | 直接设置格子值（供 AI 走法排序用） |
@@ -40,10 +40,31 @@ utils.js  ←── board.js  ←── ai.js
 ```
 getMove()
   ├── 直接取胜检测（O(N) 预检）
-  ├── 必堵走法检测（对手四连威胁）
+  ├── 必堵走法检测（对手成五威胁）
+  ├── 开局原则（仅中等/困难，前 3 手应答，findOpeningMove）
+  │     ├── 盘面已有三/四棋型 → 交给战术/搜索
+  │     ├── 抢占对手成三成长点（一步前瞻 + 贴身封堵优先）
+  │     └── 否则向中心发展（首应手斜邻对方棋子）
+  ├── 战术预检链（仅中等/困难，findTacticalMove）
+  │     ├── 己方 VCF（连续冲四强制取胜）
+  │     ├── 对手 VCF 防守（模拟候选防守子，重跑对手 VCF 直至失效）
+  │     ├── 己方双威胁点（四三/双三/双四，下一步必胜）
+  │     └── 占据对手双威胁点
   ├── 根节点走法排序（按启发式评分降序 → 提升剪枝效率）
   └── Alpha-Beta 搜索（makeMove/undo 原地操作，无 clone 开销）
 ```
+
+关键约定与实现：
+
+- **终端局面**：`makeMove` 获胜时不切换回合，终端节点返回 `-(FIVE + depth)`，
+  经父节点取负后成为获胜价值；深度奖励让更快的胜利得分更高
+- **置换表**：带 EXACT/LOWER/UPPER 边界标记；胜负分不入表（与剩余深度相关）
+- **棋型分类**（`classifyLine`）：连续段 + 单间隙跳型（跳活三/跳冲四/嵌四），
+  活三含"真活三"判定（至少一侧有空间成长成活四）；返回 `stones` 参与子数
+- **评估归一化**：四以下棋型按参与子数均摊（一个棋型只计一次分），四/五保持逐子；
+  叠加中心度加成（`posBonus`）与对手急迫威胁加权（`DEFENSE_URGENCY`）
+- **VCF 搜索**（`findVCF`/`_vcf`）：只展开制造冲四/活四的走法，防守方被迫堵成五点；
+  用 `setCellDirect` 原地推演，带节点数与时间预算，超预算返回 null（保守回退）
 
 评分权重见 `SCORES` 常量，核心思路是**双面评估**：
 - 己方棋子 → 正分（进攻威胁）
@@ -104,9 +125,16 @@ game.js                          server/index.js
 
 ### AI 太强/太弱怎么调
 
-修改 `js/ai.js` 中的 `DEPTH` 和 `SCORES` 常量：
-- `DEPTH` 越大越强（也越慢），当前困难模式为 3
-- `SCORES` 调整各棋型权重，比如调低 `FIVE` 以外的值让 AI 更保守
+修改 `js/ai.js` 中的常量：
+
+- `MAX_DEPTH` / `this.timeLimit`：困难模式迭代加深的层数上限与时间预算，调小变弱变快
+- `VCF_MAX_PLIES` / `VCF_NODE_BUDGET` / `VCF_TIME_BUDGET_MS`：VCF 攻杀搜索的深度与预算
+- `SEARCH_CANDIDATE_LIMIT` / `SEARCH_RADIUS`：内部节点的候选点数量与候选半径
+- `SCORES`：各棋型权重，比如调低 `FIVE` 以外的值让 AI 更保守
+- `DEFENSE_URGENCY`：对手急迫威胁（活三及以上）的额外权重，调大更偏防守
+- `POS_MAX`：中心度加成上限，调大更倾向占中
+- `OPENING_MAX_HISTORY`：开局原则模块生效的最大手数，调 0 可完全关闭开局引导
+- 简单模式刻意不走战术预检链（`findTacticalMove` 仅中等/困难启用），保持弱棋力
 
 ### 在线模式怎么加新功能
 
