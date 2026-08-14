@@ -177,20 +177,22 @@ npx wrangler dev   # 本地模拟 Worker + Durable Object + WebSocket
 
 ---
 
-### 方案 B：本机 + Cloudflare Tunnel（零成本）
+### 方案 B：本机 + Cloudflare Tunnel（零成本，一键脚本）
 
-适合临时玩。把本机暴露到公网，不需要任何云服务。
+适合临时玩，不需要任何云服务。已提供一键脚本：**双击项目根目录的
+`play-online.bat`** → 自动启动游戏服务（`npm start`）+ 隧道，抓到公网
+链接后**自动复制到剪贴板**，直接粘贴发给朋友；关掉窗口即断开通道。
+
+> 前提：项目根目录放好 `cloudflared.exe`（[下载](https://developers.cloudflare.com/cloudflared/)）。
+> 隧道把页面和 WebSocket 一起暴露，朋友直接打开链接即可玩，无需改任何配置。
+
+手动方式（脚本的等价操作）：
 
 1. 本机启动游戏服务：`npm start`
 2. 启动 Tunnel：`cloudflared tunnel --url http://localhost:8000`
-3. 拿到 `https://xxx.trycloudflare.com` 地址
-4. 填到 `js/config.js`：
+3. 把 `https://xxx.trycloudflare.com` 地址发给朋友
 
-```js
-wsUrl: "wss://xxx.trycloudflare.com",
-```
-
-> ⚠️ Tunnel 关闭后地址失效，下次重启地址会变。电脑关机就不能玩。
+> ⚠️ Tunnel 关闭后地址失效，下次重启地址会变。电脑关机就不能玩；对局期间电脑不要睡眠。
 
 ---
 

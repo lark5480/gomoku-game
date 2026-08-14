@@ -23,6 +23,8 @@
 ### 文件结构
 
 ```
+├── play-online.bat     # 联机一键通道入口（双击：服务+隧道+链接复制到剪贴板）
+├── play-online.ps1     # 一键通道脚本（自动抓取 trycloudflare 链接）
 ├── index.html          # 主 HTML 文件
 ├── css/style.css       # 响应式样式
 ├── js/
