@@ -9,6 +9,10 @@
  */
 import { Room } from './room.js';
 
+// wrangler requires the Durable Object class bound in wrangler.toml to be
+// exported from the entrypoint itself.
+export { Room };
+
 export default {
   async fetch(request, env) {
     const upgrade = (request.headers.get('Upgrade') || '').toLowerCase();
