@@ -58,6 +58,9 @@ const DIRECTIONS = [
 // Search constants
 const SEARCH_RADIUS = 2;
 const SEARCH_CANDIDATE_LIMIT = 15;
+// Root candidates searched by hard mode (heuristic ordering reliably puts
+// winning/blocking moves first, so the long tail can be dropped)
+const ROOT_CANDIDATE_LIMIT = 24;
 const MAX_DEPTH = 9;
 
 // Transposition table entry flags
@@ -76,8 +79,8 @@ const VCF_TIME_BUDGET_MS = 700;
 const DEFENSE_URGENCY = 0.25;
 // Centrality bonus per stone: POS_MAX at board center, 0 beyond Chebyshev 7.
 const POS_MAX = 12;
-// Opening guidance applies only to the AI's first few moves (plies 2/4/6).
-const OPENING_MAX_HISTORY = 5;
+// Opening guidance applies only to the AI's first few moves (plies 2/4/6/8).
+const OPENING_MAX_HISTORY = 7;
 
 // Thrown when iterative deepening search exceeds time budget
 class SearchTimeout extends Error {}
@@ -92,6 +95,28 @@ export class AIPlayer {
     this.nodeCount = 0;
     this.vcfNodes = 0;
     this.vcfDeadline = 0;
+    // Three-state VCF result: move | null-with-vcfExhausted=false (proven
+    // none) | null-with-vcfExhausted=true (budget/time cut the search short —
+    // the answer is unknown, not "no forced win").
+    this.vcfExhausted = false;
+    // Zobrist hashing state (two 32-bit accumulators; combined into one
+    // exact 53-bit key). Maintained only while incremental evaluation is
+    // active, i.e. during alpha-beta search.
+    this.zobrist = new Map();
+    this._hashHi = 0;
+    this._hashLo = 0;
+
+    // Incremental evaluation state (active only during alpha-beta search):
+    // per-stone pattern cache, side-independent accumulators and a rollback
+    // stack, so leaf evaluation is O(1) instead of a full board scan.
+    this._incActive = false;
+    this._cache = new Map();
+    this._acc = {
+      T: { black: 0, white: 0 },
+      S: { black: 0, white: 0 },
+      P: { black: 0, white: 0 },
+    };
+    this._undoStack = [];
   }
 
   /**
@@ -155,10 +180,22 @@ export class AIPlayer {
     if (oppVcf) {
       const defense = this.defendVCF(opponent);
       if (defense) return defense;
+      // No disruption exists. Answer the sharpest current threat anyway:
+      // denying the opponent's slower double-threat point is pointless when
+      // a faster forcing chain is already unstoppable.
+      const fallback = this.findDefensiveMove(opponent);
+      if (fallback) return fallback;
+    } else if (this.vcfExhausted) {
+      // The opponent forcing-win search was cut short, so the position is
+      // not proven safe: answer their sharpest current threat instead of
+      // playing a neutral move.
+      const defense = this.findDefensiveMove(opponent);
+      if (defense) return defense;
     }
 
-    // We can create two simultaneous threats (win next move)
-    const doubleMove = this.findDoubleThreat(player);
+    // We can create two simultaneous threats (win next move); verify a
+    // single opponent reply cannot outrun or dissolve them.
+    const doubleMove = this.findDoubleThreat(player, { verify: true });
     if (doubleMove) return doubleMove;
 
     // Deny opponent's double-threat point
@@ -393,13 +430,14 @@ export class AIPlayer {
 
     const savedHistoryLen = this.board.getMoveHistory().length;
 
+    this._initIncremental();
     try {
       for (const move of validMoves) {
-        this.board.makeMove(move.row, move.col);
+        this._searchMake(move);
 
         const score = -this.alphaBeta(this.board, 1, -Infinity, Infinity);
 
-        this.board.undo();
+        this._searchUndo();
 
         if (score > bestScore) {
           bestScore = score;
@@ -410,6 +448,7 @@ export class AIPlayer {
       while (this.board.getMoveHistory().length > savedHistoryLen) {
         this.board.undo();
       }
+      this._discardIncremental();
     }
 
     return bestMove;
@@ -423,11 +462,40 @@ export class AIPlayer {
   getMoveHard(validMoves) {
     const currentPlayer = this.board.getCurrentPlayer();
 
-    // Score and sort candidates once
+    // Score and sort candidates once. Forced tactical cells (winning moves,
+    // blocks of fours, double-threat points) must survive the truncation
+    // below even when the heuristic undervalues them, so they replace the
+    // lowest-ranked ordinary candidates — the root width stays 24 to keep
+    // the search depth (width costs depth, which costs strength).
     for (const move of validMoves) {
       move.heuristicScore = this.scoreMove(move.row, move.col, currentPlayer, this.board);
     }
+    const forced = this.collectForcedCells(currentPlayer, validMoves);
+    for (const move of validMoves) {
+      move._forced = forced.has(move.row + ',' + move.col);
+    }
     validMoves.sort((a, b) => b.heuristicScore - a.heuristicScore);
+
+    const kept = validMoves.slice(0, ROOT_CANDIDATE_LIMIT);
+    const keptSet = new Set(kept.map((m) => m.row + ',' + m.col));
+    for (const move of validMoves) {
+      const key = move.row + ',' + move.col;
+      if (move._forced && !keptSet.has(key)) {
+        keptSet.add(key);
+        kept.push(move);
+        if (kept.length > ROOT_CANDIDATE_LIMIT) {
+          // Drop the lowest-ranked non-forced move to make room.
+          for (let i = kept.length - 1; i >= 0; i--) {
+            if (!kept[i]._forced) {
+              keptSet.delete(kept[i].row + ',' + kept[i].col);
+              kept.splice(i, 1);
+              break;
+            }
+          }
+        }
+      }
+    }
+    validMoves.splice(0, validMoves.length, ...kept);
 
     this.transpositionTable.clear();
     this.searchStartTime = performance.now();
@@ -437,15 +505,22 @@ export class AIPlayer {
 
     const savedHistoryLen = this.board.getMoveHistory().length;
 
+    this._initIncremental();
     try {
       for (let depth = 1; depth <= MAX_DEPTH; depth++) {
+        // Don't start a depth we are unlikely to finish: a partially
+        // completed iteration is discarded anyway, so spend the remaining
+        // budget where it already produced a result.
+        const elapsed = performance.now() - this.searchStartTime;
+        if (depth > 1 && elapsed > this.timeLimit * 0.75) break;
+
         let bestScore = -Infinity;
         let depthBestMove = validMoves[0];
 
         for (const move of validMoves) {
-          this.board.makeMove(move.row, move.col);
+          this._searchMake(move);
           const score = -this.alphaBeta(this.board, depth, -Infinity, Infinity);
-          this.board.undo();
+          this._searchUndo();
 
           if (score > bestScore) {
             bestScore = score;
@@ -473,9 +548,44 @@ export class AIPlayer {
       while (this.board.getMoveHistory().length > savedHistoryLen) {
         this.board.undo();
       }
+      this._discardIncremental();
     }
 
     return bestMove;
+  }
+
+  /**
+   * Tactical cells that must survive root-candidate truncation: cells that
+   * complete five, create a four, or create a double live three for either
+   * side, plus the completion cells of opponent fours. The pre-check chain
+   * covers the direct cases, but this keeps secondary threats searchable.
+   * @returns {Set<string>} "row,col" keys
+   */
+  collectForcedCells(player, validMoves) {
+    const opponent = player === Player.BLACK ? Player.WHITE : Player.BLACK;
+    const forced = new Set();
+    const addCell = (r, c) => {
+      if (isValidPosition(r, c) && this.board.getCell(r, c) === null) {
+        forced.add(r + ',' + c);
+      }
+    };
+
+    for (const move of validMoves) {
+      this.board.setCellDirect(move.row, move.col, player);
+      const mine = this.threatInfoAt(move.row, move.col, player);
+      this.board.setCellDirect(move.row, move.col, opponent);
+      const theirs = this.threatInfoAt(move.row, move.col, opponent);
+      this.board.setCellDirect(move.row, move.col, null);
+
+      if (mine.five || mine.fours > 0 || mine.liveThrees >= 2) {
+        addCell(move.row, move.col);
+      }
+      if (theirs.five || theirs.fours > 0 || theirs.liveThrees >= 1) {
+        addCell(move.row, move.col);
+        for (const c of theirs.completions) addCell(c.row, c.col);
+      }
+    }
+    return forced;
   }
 
   /**
@@ -509,48 +619,129 @@ export class AIPlayer {
     const alphaOrig = alpha;
     const key = this.getBoardKey(board);
     const cached = this.transpositionTable.get(key);
-    if (cached && cached.depth >= depth) {
-      if (cached.flag === TT_EXACT) return cached.score;
-      if (cached.flag === TT_LOWER) alpha = Math.max(alpha, cached.score);
-      else if (cached.flag === TT_UPPER) beta = Math.min(beta, cached.score);
-      if (alpha >= beta) return cached.score;
+    let ttMove = null;
+    if (cached) {
+      // The stored best move aids ordering even when the entry is too
+      // shallow to provide a usable bound
+      if (cached.move) ttMove = cached.move;
+      if (cached.depth >= depth) {
+        if (cached.flag === TT_EXACT) return cached.score;
+        if (cached.flag === TT_LOWER) alpha = Math.max(alpha, cached.score);
+        else if (cached.flag === TT_UPPER) beta = Math.min(beta, cached.score);
+        if (alpha >= beta) return cached.score;
+      }
     }
 
-    const validMoves = board.getValidMoves(SEARCH_RADIUS);
+    // The last ply only needs cells adjacent to existing stones: every
+    // five-completing, four-creating or blocking point touches a stone, so
+    // radius 1 is tactically complete there and keeps the leaf width (and
+    // therefore the whole tree cost) manageable. The TT move is injected
+    // back in case it lies at distance 2.
+    const validMoves = board.getValidMoves(depth === 1 ? 1 : SEARCH_RADIUS);
+    if (
+      ttMove &&
+      board.getCell(ttMove.row, ttMove.col) === null &&
+      !validMoves.some((m) => m.row === ttMove.row && m.col === ttMove.col)
+    ) {
+      validMoves.unshift({ row: ttMove.row, col: ttMove.col });
+    }
     if (validMoves.length === 0) {
       return this.evaluateBoard(board);
     }
 
-    // Move ordering at internal nodes: keep only the strongest candidates
+    const { best, bestMove } = this._searchNodeMoves(board, depth, alpha, beta, validMoves, ttMove);
+
+    // Store with bound flag and best move; skip win/loss scores
+    // (they are depth-dependent)
+    if (Math.abs(best) < SCORES.FIVE) {
+      let flag = TT_EXACT;
+      if (best <= alphaOrig) flag = TT_UPPER;
+      else if (best >= beta) flag = TT_LOWER;
+      this.transpositionTable.set(key, {
+        score: best,
+        depth,
+        flag,
+        move: bestMove ? { row: bestMove.row, col: bestMove.col } : null,
+      });
+    }
+
+    return best;
+  }
+
+  /**
+   * Iterate a node's candidate moves: try the transposition-table move
+   * first, then the heuristically ordered candidates.
+   * @returns {{best:number, bestMove:Object|null}}
+   */
+  _searchNodeMoves(board, depth, alpha, beta, validMoves, ttMove) {
+    let best = -Infinity;
+    let bestMove = null;
+
+    if (ttMove) {
+      const idx = validMoves.findIndex((m) => m.row === ttMove.row && m.col === ttMove.col);
+      if (idx !== -1) {
+        validMoves.splice(idx, 1);
+        this._searchMake(ttMove);
+        const score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
+        this._searchUndo();
+
+        best = score;
+        bestMove = ttMove;
+        if (score > alpha) alpha = score;
+      }
+    }
+
+    if (alpha >= beta) return { best, bestMove };
+
+    // Move ordering at internal nodes: keep only the strongest candidates,
+    // plus at most a handful of four-class threats that the heuristic might
+    // have ranked just below the cutoff (jump shapes can score many cells
+    // at rush-four level, so the extras are capped to keep branching sane).
     if (validMoves.length > 1 && depth >= 2) {
       const currentPlayer = board.getCurrentPlayer();
       for (const move of validMoves) {
         move._hs = this.scoreMove(move.row, move.col, currentPlayer, board);
       }
       validMoves.sort((a, b) => b._hs - a._hs);
-      validMoves.length = Math.min(validMoves.length, SEARCH_CANDIDATE_LIMIT);
+      const kept = [];
+      for (const move of validMoves) {
+        if (kept.length < SEARCH_CANDIDATE_LIMIT) {
+          kept.push(move);
+        } else if (move._hs >= SCORES.RUSH_FOUR && kept.length < SEARCH_CANDIDATE_LIMIT + 3) {
+          kept.push(move);
+        }
+      }
+      validMoves.splice(0, validMoves.length, ...kept);
     }
 
-    let best = -Infinity;
+    // Principal variation search: the first move (after the TT move) is
+    // searched with the full window; the rest get a null window first and
+    // are re-searched only on fail-high. With the heuristic ordering this
+    // cuts the node count several-fold at equal results.
+    let first = true;
     for (const move of validMoves) {
-      board.makeMove(move.row, move.col);
-      const score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
-      board.undo();
+      this._searchMake(move);
+      let score;
+      if (first) {
+        first = false;
+        score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
+      } else {
+        score = -this.alphaBeta(board, depth - 1, -alpha - 1, -alpha);
+        if (score > alpha && score < beta) {
+          score = -this.alphaBeta(board, depth - 1, -beta, -alpha);
+        }
+      }
+      this._searchUndo();
 
-      if (score > best) best = score;
+      if (score > best) {
+        best = score;
+        bestMove = move;
+      }
       if (best > alpha) alpha = best;
       if (alpha >= beta) break;
     }
 
-    // Store with bound flag; skip win/loss scores (they are depth-dependent)
-    if (Math.abs(best) < SCORES.FIVE) {
-      let flag = TT_EXACT;
-      if (best <= alphaOrig) flag = TT_UPPER;
-      else if (best >= beta) flag = TT_LOWER;
-      this.transpositionTable.set(key, { score: best, depth, flag });
-    }
-
-    return best;
+    return { best, bestMove };
   }
 
   /**
@@ -562,25 +753,52 @@ export class AIPlayer {
    */
   findVCF(attacker, opts = {}) {
     this.vcfNodes = 0;
+    this.vcfExhausted = false;
     this.vcfDeadline = performance.now() + VCF_TIME_BUDGET_MS;
     const maxPlies = opts.maxPlies ?? VCF_MAX_PLIES;
-    this.vcfBudget = opts.nodeBudget ?? VCF_NODE_BUDGET;
-    return this._vcf(attacker, maxPlies);
+
+    // Every VCF level enumerates all nearby empty cells, so node cost grows
+    // with candidate density: scale the budget so dense middlegames can still
+    // see chains of the same depth before being cut off.
+    const density = this.board.getValidMoves(SEARCH_RADIUS).length;
+    this.vcfBudget =
+      opts.nodeBudget ?? Math.min(24000, VCF_NODE_BUDGET + Math.max(0, density - 60) * 60);
+
+    // Iterative deepening: prove shallow forcing chains first, then deepen.
+    // A rung that finds a win answers immediately; a rung cut off by
+    // budget/time marks the result as unknown instead of a proven "none".
+    for (const plies of [4, 8, 12, 16, 20].filter((p) => p <= maxPlies)) {
+      if (performance.now() > this.vcfDeadline) break;
+      const move = this._vcf(attacker, plies);
+      if (move) return move;
+      if (this.vcfExhausted) break; // budget gone; deeper rungs are pointless
+    }
+    return null;
   }
 
   /**
    * VCF recursion: attacker plays a four, defender's reply is forced.
    */
   _vcf(attacker, pliesLeft) {
-    if (pliesLeft <= 0 || this.vcfNodes >= this.vcfBudget) return null;
+    // Plies exhausted without a win: a definitive "not within this depth".
+    if (pliesLeft <= 0) return null;
+    // Budget exhausted: the search was cut short, so the result is unknown.
+    if (this.vcfNodes >= this.vcfBudget) {
+      this.vcfExhausted = true;
+      return null;
+    }
 
     const defender = attacker === Player.BLACK ? Player.WHITE : Player.BLACK;
     const candidates = this.board.getValidMoves(SEARCH_RADIUS);
     const fourMoves = [];
 
     for (const move of candidates) {
-      if (++this.vcfNodes >= this.vcfBudget) return null;
+      if (++this.vcfNodes >= this.vcfBudget) {
+        this.vcfExhausted = true;
+        return null;
+      }
       if ((this.vcfNodes & 0xff) === 0 && performance.now() > this.vcfDeadline) {
+        this.vcfExhausted = true;
         return null;
       }
 
@@ -614,25 +832,97 @@ export class AIPlayer {
    */
   defendVCF(attacker) {
     const defender = attacker === Player.BLACK ? Player.WHITE : Player.BLACK;
-    const candidates = this.board.getValidMoves(SEARCH_RADIUS);
+    const all = this.board.getValidMoves(SEARCH_RADIUS);
 
-    for (const move of candidates) {
+    // Priority candidates: cells where the attacker would create a four or a
+    // live three. Occupying those is the most direct disruption, and it must
+    // never be skipped just because a heuristic ranked them low.
+    const forced = new Set();
+    for (const move of all) {
+      this.board.setCellDirect(move.row, move.col, attacker);
+      const info = this.threatInfoAt(move.row, move.col, attacker);
+      this.board.setCellDirect(move.row, move.col, null);
+      if (info.fours > 0 || info.liveThrees > 0) {
+        forced.add(move.row + ',' + move.col);
+      }
+    }
+
+    for (const move of all) {
       move.heuristicScore = this.scoreMove(move.row, move.col, defender, this.board);
     }
-    candidates.sort((a, b) => b.heuristicScore - a.heuristicScore);
+    all.sort((a, b) => b.heuristicScore - a.heuristicScore);
 
-    const limit = Math.min(candidates.length, 12);
-    for (let i = 0; i < limit; i++) {
-      const move = candidates[i];
+    const candidates = [];
+    const seen = new Set();
+    const push = (m) => {
+      const key = m.row + ',' + m.col;
+      if (!seen.has(key)) {
+        seen.add(key);
+        candidates.push(m);
+      }
+    };
+    for (const key of forced) {
+      const [r, c] = key.split(',').map(Number);
+      push({ row: r, col: c });
+    }
+    for (const m of all) {
+      if (candidates.length >= 20) break;
+      push(m);
+    }
+
+    for (const move of candidates) {
       this.board.makeMove(move.row, move.col);
       const stillWinning = this.findVCF(attacker, {
         maxPlies: 16,
         nodeBudget: 2500,
       });
+      const inconclusive = this.vcfExhausted;
       this.board.undo();
-      if (!stillWinning) return move;
+      // Only accept a defense we could fully verify: a truncated re-search
+      // must not be mistaken for "the VCF is gone".
+      if (!stillWinning && !inconclusive) return move;
     }
     return null;
+  }
+
+  /**
+   * Conservative defensive fallback used when the opponent's VCF status is
+   * unknown: occupy the best cell that denies the opponent's sharpest
+   * current threats (five completions, four creation, three growth).
+   * @returns {Object|null} Defensive move {row, col} or null if no threat
+   */
+  findDefensiveMove(opponent) {
+    const me = opponent === Player.BLACK ? Player.WHITE : Player.BLACK;
+    const candidates = this.board.getValidMoves(SEARCH_RADIUS);
+    const threatCells = new Set();
+
+    for (const move of candidates) {
+      this.board.setCellDirect(move.row, move.col, opponent);
+      const info = this.threatInfoAt(move.row, move.col, opponent);
+      this.board.setCellDirect(move.row, move.col, null);
+
+      if (info.five) return move; // safety net; must-block runs earlier
+      if (info.fours > 0) {
+        for (const c of info.completions) threatCells.add(c.row + ',' + c.col);
+        // A two-completion four cannot be blocked after the fact: deny the
+        // creation cell itself.
+        if (info.completions.length >= 2) threatCells.add(move.row + ',' + move.col);
+      }
+      if (info.liveThrees > 0) threatCells.add(move.row + ',' + move.col);
+    }
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const key of threatCells) {
+      const [r, c] = key.split(',').map(Number);
+      if (this.board.getCell(r, c) !== null) continue;
+      const score = this.scoreMove(r, c, me, this.board);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { row: r, col: c };
+      }
+    }
+    return best;
   }
 
   /**
@@ -681,18 +971,64 @@ export class AIPlayer {
    * @param {string} player - 'black' or 'white'
    * @returns {Object|null} Double-threat move {row, col} or null
    */
-  findDoubleThreat(player) {
+  findDoubleThreat(player, opts = {}) {
     const validMoves = this.board.getValidMoves(SEARCH_RADIUS);
 
     for (const move of validMoves) {
       this.board.setCellDirect(move.row, move.col, player);
       const info = this.threatInfoAt(move.row, move.col, player);
+      if (!(info.five || info.fours + info.liveThrees >= 2)) {
+        this.board.setCellDirect(move.row, move.col, null);
+        continue;
+      }
+      const ok = opts.verify ? this.verifyDoubleThreat(move.row, move.col, player) : true;
       this.board.setCellDirect(move.row, move.col, null);
-
-      if (info.five) return move;
-      if (info.fours + info.liveThrees >= 2) return move;
+      if (ok) return move;
     }
     return null;
+  }
+
+  /**
+   * Verify that a double threat through the already-placed stone at
+   * (row, col) cannot be outrun by a single opponent reply: reject when the
+   * opponent can answer with a five, or with a four that we cannot counter
+   * with an immediate five of our own (a four+three or double-four threat
+   * always has one, a double three may not).
+   * @returns {boolean}
+   */
+  verifyDoubleThreat(row, col, player) {
+    const opponent = player === Player.BLACK ? Player.WHITE : Player.BLACK;
+
+    for (const reply of this.board.getValidMoves(SEARCH_RADIUS)) {
+      this.board.setCellDirect(reply.row, reply.col, opponent);
+      const oppInfo = this.threatInfoAt(reply.row, reply.col, opponent);
+
+      let refutable = false;
+      if (oppInfo.five) {
+        refutable = true;
+      } else if (oppInfo.fours > 0 && !this.hasImmediateFive(player)) {
+        refutable = true;
+      }
+
+      this.board.setCellDirect(reply.row, reply.col, null);
+      if (refutable) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Whether `player` can complete five immediately (used to judge races
+   * between our double threat and an opponent four).
+   * @returns {boolean}
+   */
+  hasImmediateFive(player) {
+    for (const move of this.board.getValidMoves(SEARCH_RADIUS)) {
+      this.board.setCellDirect(move.row, move.col, player);
+      const info = this.threatInfoAt(move.row, move.col, player);
+      this.board.setCellDirect(move.row, move.col, null);
+      if (info.five) return true;
+    }
+    return false;
   }
 
   /**
@@ -748,20 +1084,72 @@ export class AIPlayer {
   }
 
   /**
-   * Generate board hash key for transposition table
+   * Board hash key for the transposition table. During search this is the
+   * incrementally maintained Zobrist hash (two 32-bit accumulators combined
+   * into one exact integer); outside search it falls back to a full-board
+   * string key.
    */
   getBoardKey(board) {
+    if (this._incActive) {
+      return (this._hashHi >>> 0) * 0x100000000 + (this._hashLo >>> 0);
+    }
     return board.getState().flat().join('');
   }
 
   /**
+   * Random Zobrist pair (two int32 values) for one cell/color combination.
+   * Generated lazily; XOR cancellation makes make/undo updates O(1).
+   */
+  _getZobristPair(row, col, color) {
+    const key = (row * BOARD_SIZE + col) * 2 + (color === Player.BLACK ? 0 : 1);
+    let pair = this.zobrist.get(key);
+    if (!pair) {
+      pair = [(Math.random() * 0x100000000) >>> 0, (Math.random() * 0x100000000) >>> 0];
+      this.zobrist.set(key, pair);
+    }
+    return pair;
+  }
+
+  /**
+   * Toggle one stone's contribution in the incremental Zobrist hash.
+   */
+  _updateHash(row, col, color) {
+    const [hi, lo] = this._getZobristPair(row, col, color);
+    this._hashHi ^= hi;
+    this._hashLo ^= lo;
+  }
+
+  /**
    * Evaluate entire board for both players.
+   * During search this is an O(1) read of incrementally maintained
+   * accumulators; outside search it falls back to a full board scan.
    * Combines shape scores (normalized so a shape counts once, not once per
    * stone), a centrality differential, and an urgency surcharge on the
    * opponent's sharp threats (live three and up), which were just created
    * and must be answered by the side to move.
    */
   evaluateBoard(board) {
+    const currentPlayer = board.getCurrentPlayer();
+    const opponent = currentPlayer === Player.BLACK ? Player.WHITE : Player.BLACK;
+
+    if (this._incActive) {
+      const acc = this._acc;
+      return (
+        acc.T[currentPlayer] -
+        acc.T[opponent] +
+        (acc.P[currentPlayer] - acc.P[opponent]) -
+        DEFENSE_URGENCY * acc.S[opponent]
+      );
+    }
+
+    return this._evaluateBoardFull(board);
+  }
+
+  /**
+   * Full-scan board evaluation (reference implementation, also used to
+   * initialize the incremental accumulators before search).
+   */
+  _evaluateBoardFull(board) {
     const currentPlayer = board.getCurrentPlayer();
     const opponent = currentPlayer === Player.BLACK ? Player.WHITE : Player.BLACK;
 
@@ -786,6 +1174,204 @@ export class AIPlayer {
     }
 
     return myScore - oppScore - DEFENSE_URGENCY * oppSharp + posScore;
+  }
+
+  /**
+   * Normalized contribution of one classified pattern (shared by the
+   * full-scan and incremental evaluators).
+   * @returns {{score:number, sharp:number}}
+   */
+  _patternContribution(pattern) {
+    const isBig =
+      pattern.type === 'rushFour' || pattern.type === 'liveFour' || pattern.type === 'five';
+    let score = pattern.score;
+    if (!isBig) score = score / pattern.stones;
+    const sharp = isBig || pattern.type === 'liveThree' ? score : 0;
+    return { score, sharp };
+  }
+
+  /**
+   * Classify one direction of the stone at (row, col); the stone must be
+   * placed. Returns the normalized {score, sharp} contribution.
+   */
+  _dirEntry(row, col, dr, dc, player) {
+    const line = this.extractLine(row, col, dr, dc, this.board);
+    const pattern = this.classifyLine(line, player);
+    if (!pattern) return { score: 0, sharp: 0 };
+    return this._patternContribution(pattern);
+  }
+
+  /**
+   * Initialize incremental evaluation from the current position.
+   * Must be called before the search loop; _discardIncremental after it.
+   * Cache entries keep per-direction contributions so that a stone touched
+   * by a new neighbor only needs one direction reclassified.
+   */
+  _initIncremental() {
+    this._cache = new Map();
+    this._acc = {
+      T: { black: 0, white: 0 },
+      S: { black: 0, white: 0 },
+      P: { black: 0, white: 0 },
+    };
+    this._undoStack = [];
+    this._hashHi = 0;
+    this._hashLo = 0;
+
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        const cell = this.board.getCell(row, col);
+        if (!cell) continue;
+        this._updateHash(row, col, cell);
+        const dirs = DIRECTIONS.map(([dr, dc]) => this._dirEntry(row, col, dr, dc, cell));
+        const total = dirs.reduce((sum, d) => sum + d.score, 0);
+        const sharp = dirs.reduce((sum, d) => sum + d.sharp, 0);
+        this._cache.set(row * BOARD_SIZE + col, { total, sharp, dirs });
+        this._acc.T[cell] += total;
+        this._acc.S[cell] += sharp;
+        this._acc.P[cell] += this.posBonus(row, col);
+      }
+    }
+    this._incActive = true;
+  }
+
+  /**
+   * Tear down incremental evaluation state.
+   */
+  _discardIncremental() {
+    this._incActive = false;
+    this._cache = new Map();
+    this._undoStack = [];
+  }
+
+  /**
+   * Accumulator helpers: add/remove one stone's pattern contribution.
+   */
+  _accAdd(entry, color) {
+    this._acc.T[color] += entry.total;
+    this._acc.S[color] += entry.sharp;
+  }
+
+  _accSub(entry, color) {
+    this._acc.T[color] -= entry.total;
+    this._acc.S[color] -= entry.sharp;
+  }
+
+  /**
+   * Stones whose pattern windows include (row, col): every stone within
+   * 4 steps along the four directions. dirIdx records which of the stone's
+   * directions is affected, so only that direction needs reclassifying.
+   */
+  _collectAffected(row, col) {
+    const affected = [];
+    for (let dirIdx = 0; dirIdx < DIRECTIONS.length; dirIdx++) {
+      const [dr, dc] = DIRECTIONS[dirIdx];
+      for (const sign of [1, -1]) {
+        for (let i = 1; i <= 4; i++) {
+          const r = row + dr * i * sign;
+          const c = col + dc * i * sign;
+          if (!isValidPosition(r, c)) break;
+          const cell = this.board.getCell(r, c);
+          if (cell) {
+            affected.push({
+              key: r * BOARD_SIZE + c,
+              row: r,
+              col: c,
+              color: cell,
+              dirIdx,
+            });
+          }
+        }
+      }
+    }
+    return affected;
+  }
+
+  /**
+   * makeMove wrapper that keeps the incremental evaluation consistent.
+   * Only for use inside the search (medium/hard root loops and alphaBeta).
+   */
+  _searchMake(move) {
+    if (!this._incActive) {
+      this.board.makeMove(move.row, move.col);
+      return;
+    }
+
+    const color = this.board.getCurrentPlayer();
+    const key = move.row * BOARD_SIZE + move.col;
+    const affected = this._collectAffected(move.row, move.col);
+
+    // Detach old contributions of stones whose windows include the new one
+    for (const a of affected) {
+      a.old = this._cache.get(a.key);
+      this._accSub(a.old, a.color);
+    }
+
+    this.board.makeMove(move.row, move.col);
+    this._updateHash(move.row, move.col, color);
+
+    // Add the placed stone (all four directions are new)
+    const dirs = DIRECTIONS.map(([dr, dc]) => this._dirEntry(move.row, move.col, dr, dc, color));
+    const placed = {
+      total: dirs.reduce((sum, d) => sum + d.score, 0),
+      sharp: dirs.reduce((sum, d) => sum + d.sharp, 0),
+      dirs,
+    };
+    this._cache.set(key, placed);
+    this._accAdd(placed, color);
+    this._acc.P[color] += this.posBonus(move.row, move.col);
+
+    // Recompute only the affected direction of each neighbor stone
+    for (const a of affected) {
+      const newDir = this._dirEntry(
+        a.row,
+        a.col,
+        DIRECTIONS[a.dirIdx][0],
+        DIRECTIONS[a.dirIdx][1],
+        a.color
+      );
+      const oldDir = a.old.dirs[a.dirIdx];
+      const newDirs = a.old.dirs.slice();
+      newDirs[a.dirIdx] = newDir;
+      const entry = {
+        total: a.old.total - oldDir.score + newDir.score,
+        sharp: a.old.sharp - oldDir.sharp + newDir.sharp,
+        dirs: newDirs,
+      };
+      this._cache.set(a.key, entry);
+      this._accAdd(entry, a.color);
+    }
+
+    this._undoStack.push({ key, color, placed, affected });
+  }
+
+  /**
+   * undo wrapper that restores the incremental evaluation state.
+   */
+  _searchUndo() {
+    if (!this._incActive) {
+      this.board.undo();
+      return;
+    }
+
+    const frame = this._undoStack.pop();
+
+    // Affected stones: drop post-move values, restore pre-move values
+    for (const a of frame.affected) {
+      this._accSub(this._cache.get(a.key), a.color);
+      this._cache.set(a.key, a.old);
+      this._accAdd(a.old, a.color);
+    }
+
+    // Remove the placed stone's contribution
+    this._accSub(frame.placed, frame.color);
+    const row = Math.floor(frame.key / BOARD_SIZE);
+    const col = frame.key % BOARD_SIZE;
+    this._acc.P[frame.color] -= this.posBonus(row, col);
+    this._cache.delete(frame.key);
+    this._updateHash(row, col, frame.color);
+
+    this.board.undo();
   }
 
   /**

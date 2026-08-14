@@ -123,56 +123,57 @@ Netlify (静态前端)           WebSocket 服务器
 
 | 方案 | 费用 | 稳定性 | 需要本机 | 难度 |
 |------|------|--------|---------|------|
-| 🌟 **Cloudflare Workers** | 免费 | ★★★★ | 否 | 低 |
+| 🌟 **Cloudflare Workers** | 免费 | ★★★★ | 否 | 低（国内需自定义域名） |
 | Cloudflare Tunnel | 免费 | ★★★ | 是 | 低 |
 | Zeabur / Render | 有免费额度 | ★★★★★ | 否 | 低 |
 
 ---
 
-### 方案 A：Cloudflare Workers（推荐，🚧 未实现）
+### 方案 A：Cloudflare Workers + Durable Objects（已实现，免费）
 
-**零成本，不需要服务器，不需要备案。**
+**零服务器成本。** 代码位于 `workers/`（`index.js` 入口 + `room.js` 房间注册 DO），
+协议与本地 `server/index.js` 完全一致，客户端零改动。
 
-> 🚧 **此方案尚未实现**——`workers/` 目录目前不存在。当前可用的部署方式是方案 B（Cloudflare Tunnel）或方案 C（云服务器）。Workers 方案预留给未来可能的 Cloudflare Workers 迁移。
+> ⚠️ **国内访问注意**：`*.workers.dev` 免费域名在中国大陆被墙（无法打开）。
+> 国内使用必须绑定**你自己的域名**（付费域名约 ¥10-30/年，或免费的 eu.org
+> 需申请审批）。海外/代理网络可直接用免费地址。
+>
+> 房间状态保存在单个 registry Durable Object 的内存中（WebSocket 休眠 API +
+> alarm 定时清理），Worker 重新部署会丢房间——与旧单进程服务器同样的限制，
+> 朋友间对局可接受。
 
-> ⚠️ 单 Worker 模式，房间状态在内存中。同地区玩家通常路由到同一实例，对局不受影响。极端情况可能因 Worker 重启丢失对局。
+#### 部署步骤（Cloudflare Workers Builds，GitHub 集成）
 
-#### 部署步骤
+1. 注册 [Cloudflare](https://cloudflare.com) 账号（免费），并认领一个 `*.workers.dev` 子域名
+2. Workers & Pages → Create → **Workers Builds** → 连接本项目 GitHub 仓库，填写：
 
-1. 注册 [Cloudflare](https://cloudflare.com) 账号（免费）
-2. 在项目根目录执行：
+   | 配置项 | 值 |
+   |--------|-----|
+   | 根目录 | `workers/` |
+   | 构建命令 | 留空（代码零第三方依赖） |
+   | 部署命令 | `npx wrangler deploy` |
 
-```bash
-cd workers
-npx wrangler deploy
-```
-
-3. 首次部署按提示登录 Cloudflare 账号
-4. 部署成功后，你会得到一个 URL，如：
-   ```
-   https://gomoku-server.你的子域名.workers.dev
-   ```
-
-> 如果 `wrangler` 命令找不到：`npm install -g wrangler`
-
-#### 前端配置
-
-把 Worker 地址填到 `js/config.js`：
+3. 部署成功后得到 `https://gomoku-game.你的子域名.workers.dev`
+4. （国内使用必做）购买/申请一个域名加入 Cloudflare → 该 Worker 的
+   Settings → Domains & Routes → Add custom domain → 绑定 `ws.你的域名.com`
+5. 把地址填到 `js/config.js`：
 
 ```js
-wsUrl: "https://gomoku-server.你的子域名.workers.dev",
+wsUrl: "https://ws.你的域名.com", // 或 https://gomoku-game.你的子域名.workers.dev（仅海外可用）
 ```
 
 > 填 `https://` 就行，代码里会自动转为 `wss://` WebSocket 地址。
+> 也可不改文件，直接在 `index.html` 设置 `window.__GOMOKO_WS_URL` 临时覆盖。
 
-#### 重新部署前端
+#### 本地验证（可选）
 
 ```bash
-git add js/config.js
-git commit -m "config: 指向 Cloudflare Workers"
-git push
-# Netlify 自动重新部署
+cd workers
+npx wrangler dev   # 本地模拟 Worker + Durable Object + WebSocket
 ```
+
+浏览器开两个标签页：建房 → 加入 → 落子同步 → 关一个标签页再重连 → 重开换先。
+离线协议级测试见 `tests/workers-room.test.mjs`（已纳入 `npm test`）。
 
 ---
 

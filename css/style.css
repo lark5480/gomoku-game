@@ -38,6 +38,7 @@
   --canvas-white-2: #aaaaaa;
   --canvas-shadow: rgba(0, 0, 0, 0.5);
   --canvas-win: #ffd700;
+  --canvas-last: #ff5252;
   --canvas-hover-b: rgba(0, 0, 0, 0.3);
   --canvas-hover-w: rgba(255, 255, 255, 0.3);
   --canvas-hint-b: #ffd700;
@@ -865,7 +866,7 @@ footer {
   --divider: rgba(0, 0, 0, 0.08);
   --divider-strong: rgba(0, 0, 0, 0.12);
 
-  --overlay-bg: rgba(245, 245, 240, 0.92);
+  --overlay-bg: rgba(245, 245, 240, 0.65);
 
   --canvas-board: #e8c89a;
   --canvas-grid: #5a4a30;
@@ -876,6 +877,7 @@ footer {
   --canvas-white-2: #cfcfcf;
   --canvas-shadow: rgba(0, 0, 0, 0.35);
   --canvas-win: #ffd700;
+  --canvas-last: #d32f2f;
   --canvas-hover-b: rgba(0, 0, 0, 0.35);
   --canvas-hover-w: rgba(0, 0, 0, 0.22);
   --canvas-hint-b: #ffd700;

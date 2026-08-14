@@ -41,30 +41,44 @@ utils.js  ←── board.js  ←── ai.js
 getMove()
   ├── 直接取胜检测（O(N) 预检）
   ├── 必堵走法检测（对手成五威胁）
-  ├── 开局原则（仅中等/困难，前 3 手应答，findOpeningMove）
+  ├── 开局原则（仅中等/困难，前 4 手应答，findOpeningMove）
   │     ├── 盘面已有三/四棋型 → 交给战术/搜索
   │     ├── 抢占对手成三成长点（一步前瞻 + 贴身封堵优先）
   │     └── 否则向中心发展（首应手斜邻对方棋子）
   ├── 战术预检链（仅中等/困难，findTacticalMove）
-  │     ├── 己方 VCF（连续冲四强制取胜）
-  │     ├── 对手 VCF 防守（模拟候选防守子，重跑对手 VCF 直至失效）
-  │     ├── 己方双威胁点（四三/双三/双四，下一步必胜）
+  │     ├── 己方 VCF（连续冲四强制取胜，迭代加深 + 三态结果）
+  │     ├── 对手 VCF 防守（候选含对手威胁点；截断的复检不算防守成功）
+  │     │     └── 无解时回退 findDefensiveMove 堵最急威胁
+  │     ├── 对手 VCF 状态未知（预算截断）→ 保守防守（findDefensiveMove）
+  │     ├── 己方双威胁点（四三/双三/双四，落子前做单子化解/竞速验证）
   │     └── 占据对手双威胁点
   ├── 根节点走法排序（按启发式评分降序 → 提升剪枝效率）
+  │     └── 战术点（collectForcedCells）顶替低分候选强制保留，根宽保持 24
   └── Alpha-Beta 搜索（makeMove/undo 原地操作，无 clone 开销）
+        └── PVS 主变例 + 最后一层候选收窄到 radius 1
 ```
 
 关键约定与实现：
 
 - **终端局面**：`makeMove` 获胜时不切换回合，终端节点返回 `-(FIVE + depth)`，
   经父节点取负后成为获胜价值；深度奖励让更快的胜利得分更高
-- **置换表**：带 EXACT/LOWER/UPPER 边界标记；胜负分不入表（与剩余深度相关）
+- **置换表**：带 EXACT/LOWER/UPPER 边界标记并存储最佳走法；胜负分不入表（与剩余深度相关）；
+  key 用增量维护的 Zobrist 哈希（旧的全盘字符串拼接存在歧义碰撞：`'black'+''+'white'` 与
+  `'black'+'white'` 同值，曾导致跨局面错误复用边界值）
 - **棋型分类**（`classifyLine`）：连续段 + 单间隙跳型（跳活三/跳冲四/嵌四），
   活三含"真活三"判定（至少一侧有空间成长成活四）；返回 `stones` 参与子数
 - **评估归一化**：四以下棋型按参与子数均摊（一个棋型只计一次分），四/五保持逐子；
   叠加中心度加成（`posBonus`）与对手急迫威胁加权（`DEFENSE_URGENCY`）
+- **增量评估**：搜索期间维护"每子分方向棋型贡献"累加器，叶子评估 O(1)；
+  `_searchMake`/`_searchUndo` 配对更新（落子只重算受影响子的相连方向），
+  搜索外自动回退全盘扫描（`_evaluateBoardFull`）
+- **走法排序**：内部节点优先尝试置换表存储的最佳走法（浅层条目也可用），
+  其余按启发式评分取前 15（另最多保留 3 个四类威胁点）；困难模式根候选收紧至前 24
+  （`ROOT_CANDIDATE_LIMIT`），战术点（`collectForcedCells`）以顶替方式强制保留；
+  主循环用 PVS（先全窗口后零窗口复检），最后一层候选收窄到 radius 1（成五/堵五/冲四点必与棋子相邻）
 - **VCF 搜索**（`findVCF`/`_vcf`）：只展开制造冲四/活四的走法，防守方被迫堵成五点；
-  用 `setCellDirect` 原地推演，带节点数与时间预算，超预算返回 null（保守回退）
+  用 `setCellDirect` 原地推演；迭代加深（4/8/12/16/20 层）带节点数与时间预算，预算按候选密度缩放；
+  结果三态化——找到 / 证明没有 / 未知（`vcfExhausted=true`），防御复检不接受未知结果
 
 评分权重见 `SCORES` 常量，核心思路是**双面评估**：
 - 己方棋子 → 正分（进攻威胁）
@@ -127,9 +141,10 @@ game.js                          server/index.js
 
 修改 `js/ai.js` 中的常量：
 
-- `MAX_DEPTH` / `this.timeLimit`：困难模式迭代加深的层数上限与时间预算，调小变弱变快
-- `VCF_MAX_PLIES` / `VCF_NODE_BUDGET` / `VCF_TIME_BUDGET_MS`：VCF 攻杀搜索的深度与预算
-- `SEARCH_CANDIDATE_LIMIT` / `SEARCH_RADIUS`：内部节点的候选点数量与候选半径
+- `MAX_DEPTH` / `this.timeLimit`：困难模式迭代加深的层数上限与时间预算，调小变弱变快；每层结束后若已消耗约 75% 预算则提前收尾（避免已开始的层被废弃）
+- `VCF_MAX_PLIES` / `VCF_NODE_BUDGET` / `VCF_TIME_BUDGET_MS`：VCF 攻杀搜索的深度与预算；节点预算会按候选密度自动缩放，迭代加深按 4/8/12/16/20 层递进
+- `SEARCH_CANDIDATE_LIMIT` / `SEARCH_RADIUS`：内部节点的候选点数量与候选半径（最后一层自动收窄到 radius 1）
+- `ROOT_CANDIDATE_LIMIT`：困难模式根节点搜索的候选数上限；战术点由 `collectForcedCells` 顶替低分候选强制保留，调大更全面但更浅
 - `SCORES`：各棋型权重，比如调低 `FIVE` 以外的值让 AI 更保守
 - `DEFENSE_URGENCY`：对手急迫威胁（活三及以上）的额外权重，调大更偏防守
 - `POS_MAX`：中心度加成上限，调大更倾向占中

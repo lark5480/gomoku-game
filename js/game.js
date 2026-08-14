@@ -3,21 +3,12 @@
  * Handles rendering and user interaction
  */
 
-import { Board, GameState, Player } from "./board.js";
-import { AIPlayer } from "./ai.js";
-import { ReplayPlayer } from "./replay.js";
-import { OnlineManager } from "./online.js";
-import {
-  screenToBoard,
-  CELL_SIZE,
-  BOARD_PADDING,
-  BOARD_SIZE,
-} from "./utils.js";
-import {
-  initTheme,
-  toggleTheme,
-  readCanvasPalette,
-} from "./theme.js";
+import { Board, GameState, Player } from './board.js';
+import { AIPlayer } from './ai.js';
+import { ReplayPlayer } from './replay.js';
+import { OnlineManager } from './online.js';
+import { screenToBoard, CELL_SIZE, BOARD_PADDING, BOARD_SIZE } from './utils.js';
+import { initTheme, toggleTheme, readCanvasPalette } from './theme.js';
 
 // Development mode switch
 const IS_DEV = false; // Set to false for production, true for development
@@ -39,7 +30,7 @@ function debugLog(...args) {
  * @returns {string} rgba(...) 字符串
  */
 function toRgba(hex, alpha) {
-  let h = hex.replace("#", "");
+  let h = hex.replace('#', '');
   if (h.length === 3) {
     h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   }
@@ -51,48 +42,48 @@ function toRgba(hex, alpha) {
 
 class GomokuGame {
   constructor() {
-    this.canvas = document.getElementById("gameBoard");
+    this.canvas = document.getElementById('gameBoard');
     if (!this.canvas || !(this.canvas instanceof HTMLCanvasElement)) {
-      throw new Error("游戏画布元素未找到或类型错误");
+      throw new Error('游戏画布元素未找到或类型错误');
     }
-    this.ctx = this.canvas.getContext("2d");
+    this.ctx = this.canvas.getContext('2d');
     this.board = new Board();
 
     // UI elements
-    this.currentPlayerElement = document.getElementById("currentPlayer");
+    this.currentPlayerElement = document.getElementById('currentPlayer');
     if (!this.currentPlayerElement) {
-      throw new Error("当前玩家显示元素未找到");
+      throw new Error('当前玩家显示元素未找到');
     }
 
-    this.gameStatusElement = document.getElementById("gameStatus");
+    this.gameStatusElement = document.getElementById('gameStatus');
     if (!this.gameStatusElement) {
-      throw new Error("游戏状态显示元素未找到");
+      throw new Error('游戏状态显示元素未找到');
     }
 
-    this.restartBtn = document.getElementById("restartBtn");
+    this.restartBtn = document.getElementById('restartBtn');
     if (!this.restartBtn) {
-      throw new Error("重新开始按钮未找到");
+      throw new Error('重新开始按钮未找到');
     }
 
-    this.undoBtn = document.getElementById("undoBtn");
+    this.undoBtn = document.getElementById('undoBtn');
     if (!this.undoBtn) {
-      throw new Error("撤销按钮未找到");
+      throw new Error('撤销按钮未找到');
     }
     // Save original undo button content so we can toggle it for online surrender
     this._undoBtnOriginalHTML = this.undoBtn.innerHTML;
 
-    this.hintBtn = document.getElementById("hintBtn");
+    this.hintBtn = document.getElementById('hintBtn');
     if (!this.hintBtn) {
-      throw new Error("提示按钮未找到");
+      throw new Error('提示按钮未找到');
     }
 
     // Start screen elements
-    this.startScreen = document.getElementById("startScreen");
-    this.pvpBtn = document.getElementById("pvpBtn");
-    this.aiBtn = document.getElementById("aiBtn");
-    this.startBtn = document.getElementById("startBtn");
-    this.difficultySelection = document.getElementById("difficultySelection");
-    this.gameModeDisplay = document.getElementById("gameMode");
+    this.startScreen = document.getElementById('startScreen');
+    this.pvpBtn = document.getElementById('pvpBtn');
+    this.aiBtn = document.getElementById('aiBtn');
+    this.startBtn = document.getElementById('startBtn');
+    this.difficultySelection = document.getElementById('difficultySelection');
+    this.gameModeDisplay = document.getElementById('gameMode');
 
     // Game state
     this.isAnimating = false;
@@ -104,10 +95,13 @@ class GomokuGame {
     this.cellSize = null;
 
     // AI game mode
-    this.gameMode = "pvp";
-    this.aiDifficulty = "medium";
+    this.gameMode = 'pvp';
+    this.aiDifficulty = 'medium';
     this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
     this.aiPlayerColor = Player.WHITE; // AI plays as WHITE (player plays as BLACK)
+    // Monotonic token for pending AI moves: bumped on undo/restart/mode
+    // switch so a stale "thinking" callback can bail out safely.
+    this.aiThinking = 0;
 
     // Replay mode
     this.replay = new ReplayPlayer();
@@ -147,7 +141,7 @@ class GomokuGame {
     this.updateUI();
 
     // Handle window resize
-    window.addEventListener("resize", () => {
+    window.addEventListener('resize', () => {
       this.setCanvasSize();
       this.drawBoard();
     });
@@ -172,68 +166,68 @@ class GomokuGame {
    */
   addEventListeners() {
     // Canvas click for placing stones
-    this.canvas.addEventListener("click", (e) => this.handleCanvasClick(e));
+    this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
 
     // Canvas mouse move for highlighting
-    this.canvas.addEventListener("mousemove", (e) => this.handleMouseMove(e));
-    this.canvas.addEventListener("mouseleave", () => {
+    this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+    this.canvas.addEventListener('mouseleave', () => {
       if (this.inReplayMode) return;
       this.highlightedCell = null;
       this.drawBoard();
     });
 
     // Control buttons
-    this.restartBtn.addEventListener("click", () => this.restartGame());
-    this.undoBtn.addEventListener("click", () => {
-      if (this.gameMode === "online" && this.board.getGameState() === GameState.PLAYING) {
+    this.restartBtn.addEventListener('click', () => this.restartGame());
+    this.undoBtn.addEventListener('click', () => {
+      if (this.gameMode === 'online' && this.board.getGameState() === GameState.PLAYING) {
         this.online.sendSurrender();
       } else {
         this.undoMove();
       }
     });
-    this.hintBtn.addEventListener("click", () => this.showHint());
+    this.hintBtn.addEventListener('click', () => this.showHint());
 
     // Start screen buttons
-    this.pvpBtn.addEventListener("click", () => this.handleModeSelect("pvp"));
-    this.aiBtn.addEventListener("click", () => this.handleModeSelect("ai"));
-    this.startBtn.addEventListener("click", () => this.startGame());
+    this.pvpBtn.addEventListener('click', () => this.handleModeSelect('pvp'));
+    this.aiBtn.addEventListener('click', () => this.handleModeSelect('ai'));
+    this.startBtn.addEventListener('click', () => this.startGame());
 
     // Difficulty buttons
-    const diffButtons = this.difficultySelection.querySelectorAll(".diff-btn");
+    const diffButtons = this.difficultySelection.querySelectorAll('.diff-btn');
     diffButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener('click', () => {
         const difficulty = btn.dataset.difficulty;
         this.handleDifficultySelect(difficulty);
       });
     });
 
     // Replay elements (lazy-init, created when game ends)
-    this.replayBtn = document.getElementById("replayBtn");
-    this.replayBar = document.getElementById("replayBar");
+    this.replayBtn = document.getElementById('replayBtn');
+    this.replayBar = document.getElementById('replayBar');
     if (this.replayBtn) {
-      this.replayBtn.addEventListener("click", () => this.startReplay());
-      this.replayBtn.style.display = "none";
+      this.replayBtn.addEventListener('click', () => this.startReplay());
+      this.replayBtn.style.display = 'none';
     }
     if (this.replayBar) {
-      this.replayBar.style.display = "none";
+      this.replayBar.style.display = 'none';
       this.setupReplayControls();
     }
 
     // Online mode elements
-    this.onlineBtn = document.getElementById("onlineBtn");
-    this.onlineLobby = document.getElementById("onlineLobby");
+    this.onlineBtn = document.getElementById('onlineBtn');
+    this.onlineLobby = document.getElementById('onlineLobby');
     if (this.onlineBtn) {
-      this.onlineBtn.addEventListener("click", () => this.handleModeSelect("online"));
+      this.onlineBtn.addEventListener('click', () => this.handleModeSelect('online'));
     }
     this.setupOnlineLobby();
     this.setupOnlineCallbacks();
 
     // 主题切换按钮（主页 + 开始界面各一个，共用同一切换逻辑）
-    this.themeToggle = document.getElementById("themeToggle");
-    this.themeToggleStart = document.getElementById("themeToggleStart");
+    this.themeToggle = document.getElementById('themeToggle');
+    this.themeToggleStart = document.getElementById('themeToggleStart');
     const onToggle = () => this.handleThemeToggle();
-    if (this.themeToggle) this.themeToggle.addEventListener("click", onToggle);
-    if (this.themeToggleStart) this.themeToggleStart.addEventListener("click", onToggle);
+    if (this.themeToggle) this.themeToggle.addEventListener('click', onToggle);
+    if (this.themeToggleStart) this.themeToggleStart.addEventListener('click', onToggle);
   }
 
   /** 切换主题：更新调色板缓存并重绘棋盘 */
@@ -251,16 +245,16 @@ class GomokuGame {
     this.setGameMode(mode);
 
     // Update UI
-    this.pvpBtn.classList.toggle("selected", mode === "pvp");
-    this.aiBtn.classList.toggle("selected", mode === "ai");
-    if (this.onlineBtn) this.onlineBtn.classList.toggle("selected", mode === "online");
+    this.pvpBtn.classList.toggle('selected', mode === 'pvp');
+    this.aiBtn.classList.toggle('selected', mode === 'ai');
+    if (this.onlineBtn) this.onlineBtn.classList.toggle('selected', mode === 'online');
 
     // Show/hide difficulty selection
-    this.difficultySelection.classList.toggle("visible", mode === "ai");
+    this.difficultySelection.classList.toggle('visible', mode === 'ai');
 
     // Show/hide online lobby
     if (this.onlineLobby) {
-      this.onlineLobby.classList.toggle("visible", mode === "online");
+      this.onlineLobby.classList.toggle('visible', mode === 'online');
     }
   }
 
@@ -272,9 +266,9 @@ class GomokuGame {
     this.setAIDifficulty(difficulty);
 
     // Update UI
-    const diffButtons = this.difficultySelection.querySelectorAll(".diff-btn");
+    const diffButtons = this.difficultySelection.querySelectorAll('.diff-btn');
     diffButtons.forEach((btn) => {
-      btn.classList.toggle("selected", btn.dataset.difficulty === difficulty);
+      btn.classList.toggle('selected', btn.dataset.difficulty === difficulty);
     });
   }
 
@@ -284,16 +278,16 @@ class GomokuGame {
   startGame() {
     // Hide start screen
     if (this.startScreen) {
-      this.startScreen.style.display = "none";
+      this.startScreen.style.display = 'none';
     }
 
     // Update game mode display
     if (this.gameModeDisplay) {
-      const modeNames = { ai: "AI 模式", pvp: "双人模式", online: "在线对战" };
-      this.gameModeDisplay.textContent = modeNames[this.gameMode] || "双人模式";
+      const modeNames = { ai: 'AI 模式', pvp: '双人模式', online: '在线对战' };
+      this.gameModeDisplay.textContent = modeNames[this.gameMode] || '双人模式';
     }
 
-    if (this.gameMode === "online") {
+    if (this.gameMode === 'online') {
       // Online mode: don't start game yet, wait for room creation/join
       this.resetGame();
       // Show lobby overlay on the game screen
@@ -302,7 +296,7 @@ class GomokuGame {
     }
 
     // Initialize AI player if in AI mode
-    if (this.gameMode === "ai") {
+    if (this.gameMode === 'ai') {
       this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
     }
 
@@ -321,38 +315,23 @@ class GomokuGame {
     }
 
     // Skip if it's AI's turn
-    if (
-      this.gameMode === "ai" &&
-      this.board.getCurrentPlayer() === this.aiPlayerColor
-    ) {
+    if (this.gameMode === 'ai' && this.board.getCurrentPlayer() === this.aiPlayerColor) {
       return;
     }
 
     // Skip if online and not our turn
-    if (
-      this.gameMode === "online" &&
-      this.board.getCurrentPlayer() !== this.onlineMyColor
-    ) {
+    if (this.gameMode === 'online' && this.board.getCurrentPlayer() !== this.onlineMyColor) {
       return;
     }
 
-    const boardPos = screenToBoard(
-      e.clientX,
-      e.clientY,
-      this.canvas,
-      this.cellSize,
-    );
+    const boardPos = screenToBoard(e.clientX, e.clientY, this.canvas, this.cellSize);
     if (!boardPos) return;
 
     const { row, col } = boardPos;
 
     if (this.board.makeMove(row, col)) {
       // Clear hint if player moves to hint position
-      if (
-        this.hintCell &&
-        this.hintCell.row === row &&
-        this.hintCell.col === col
-      ) {
+      if (this.hintCell && this.hintCell.row === row && this.hintCell.col === col) {
         this.clearHint();
       }
 
@@ -360,10 +339,8 @@ class GomokuGame {
       this.drawStone(
         row,
         col,
-        this.board.getCurrentPlayer() === Player.WHITE
-          ? Player.BLACK
-          : Player.WHITE,
-        true,
+        this.board.getCurrentPlayer() === Player.WHITE ? Player.BLACK : Player.WHITE,
+        true
       );
 
       // Update UI
@@ -373,15 +350,12 @@ class GomokuGame {
       this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
 
       // Send move to server in online mode
-      if (this.gameMode === "online") {
+      if (this.gameMode === 'online') {
         this.online.sendMove(row, col);
       }
 
       // Trigger AI move if in AI mode and game continues
-      if (
-        this.gameMode === "ai" &&
-        this.board.getGameState() === GameState.PLAYING
-      ) {
+      if (this.gameMode === 'ai' && this.board.getGameState() === GameState.PLAYING) {
         this.makeAIMove();
       }
     }
@@ -398,12 +372,7 @@ class GomokuGame {
       return;
     }
 
-    const boardPos = screenToBoard(
-      e.clientX,
-      e.clientY,
-      this.canvas,
-      this.cellSize,
-    );
+    const boardPos = screenToBoard(e.clientX, e.clientY, this.canvas, this.cellSize);
     if (!boardPos) {
       this.highlightedCell = null;
       this.drawBoard();
@@ -475,14 +444,12 @@ class GomokuGame {
       }
     }
 
+    // Mark the most recent stone so it's easy to spot on a crowded board
+    this.drawLastMoveMarker(ctx, cellSize);
+
     // Draw highlighted cell (mouse hover)
     if (this.highlightedCell) {
-      this.drawHoverHighlight(
-        this.highlightedCell.row,
-        this.highlightedCell.col,
-        ctx,
-        cellSize,
-      );
+      this.drawHoverHighlight(this.highlightedCell.row, this.highlightedCell.col, ctx, cellSize);
     }
 
     // Draw hint cell
@@ -540,14 +507,7 @@ class GomokuGame {
     const ctx = this.ctx;
 
     // Create gradient for stone
-    const gradient = ctx.createRadialGradient(
-      x - radius / 3,
-      y - radius / 3,
-      1,
-      x,
-      y,
-      radius,
-    );
+    const gradient = ctx.createRadialGradient(x - radius / 3, y - radius / 3, 1, x, y, radius);
 
     if (player === Player.BLACK) {
       gradient.addColorStop(0, this.palette.black[0]);
@@ -650,6 +610,34 @@ class GomokuGame {
   }
 
   /**
+   * Draw a glowing ring around the most recently placed stone, so the last
+   * move stays visible on a crowded board. Skipped in replay mode (move
+   * numbers are shown instead) and when the stone belongs to the winning
+   * line (the gold winning ring already marks it).
+   */
+  drawLastMoveMarker(ctx, cellSize) {
+    if (this.inReplayMode) return;
+
+    const last = this.board.getLastMove();
+    if (!last) return;
+    if (this.board.isWinningStone(last.row, last.col)) return;
+
+    const x = BOARD_PADDING + last.col * cellSize;
+    const y = BOARD_PADDING + last.row * cellSize;
+    const radius = cellSize * 0.4;
+
+    ctx.save();
+    ctx.strokeStyle = this.palette.last;
+    ctx.shadowColor = this.palette.last;
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
    * Draw hover highlight on empty cell (mouse hover)
    */
   drawHoverHighlight(row, col, ctx, cellSize) {
@@ -659,9 +647,7 @@ class GomokuGame {
 
     ctx.save();
     ctx.fillStyle =
-      this.board.getCurrentPlayer() === Player.BLACK
-        ? this.palette.hoverB
-        : this.palette.hoverW;
+      this.board.getCurrentPlayer() === Player.BLACK ? this.palette.hoverB : this.palette.hoverW;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
@@ -672,7 +658,7 @@ class GomokuGame {
    * Draw hint highlight on empty cell
    */
   drawHighlight(row, col, ctx, cellSize) {
-    debugLog("Drawing hint at", row, col);
+    debugLog('Drawing hint at', row, col);
     const x = BOARD_PADDING + col * cellSize;
     const y = BOARD_PADDING + row * cellSize;
     const radius = cellSize * 0.25;
@@ -688,19 +674,10 @@ class GomokuGame {
    * Draw outer glow for hint
    */
   drawHintGlow(x, y, radius, ctx) {
-    const gradient = ctx.createRadialGradient(
-      x,
-      y,
-      radius * 0.5,
-      x,
-      y,
-      radius * 2,
-    );
+    const gradient = ctx.createRadialGradient(x, y, radius * 0.5, x, y, radius * 2);
 
     const hintColor =
-      this.board.getCurrentPlayer() === Player.BLACK
-        ? this.palette.hintB
-        : this.palette.hintW;
+      this.board.getCurrentPlayer() === Player.BLACK ? this.palette.hintB : this.palette.hintW;
     gradient.addColorStop(0, toRgba(hintColor, 0.8));
     gradient.addColorStop(0.5, toRgba(hintColor, 0.4));
     gradient.addColorStop(1, toRgba(hintColor, 0));
@@ -716,9 +693,7 @@ class GomokuGame {
    */
   drawHintInnerCircle(x, y, radius, ctx) {
     const hintColor =
-      this.board.getCurrentPlayer() === Player.BLACK
-        ? this.palette.hintB
-        : this.palette.hintW;
+      this.board.getCurrentPlayer() === Player.BLACK ? this.palette.hintB : this.palette.hintW;
     ctx.fillStyle = toRgba(hintColor, 0.8);
     ctx.beginPath();
     ctx.arc(x, y, radius * 0.8, 0, Math.PI * 2);
@@ -730,9 +705,7 @@ class GomokuGame {
    */
   drawHintPulse(x, y, radius, ctx) {
     const hintColor =
-      this.board.getCurrentPlayer() === Player.BLACK
-        ? this.palette.hintB
-        : this.palette.hintW;
+      this.board.getCurrentPlayer() === Player.BLACK ? this.palette.hintB : this.palette.hintW;
     ctx.strokeStyle = toRgba(hintColor, 1);
     ctx.lineWidth = 3;
     const pulseRadius = radius * 1.8 * (1 + 0.3 * Math.sin(Date.now() / 500));
@@ -749,31 +722,29 @@ class GomokuGame {
     const currentPlayer = this.board.getCurrentPlayer();
 
     // Update current player display
-    const playerIcon = this.currentPlayerElement.querySelector(".player-icon");
-    playerIcon.className = "player-icon";
+    const playerIcon = this.currentPlayerElement.querySelector('.player-icon');
+    playerIcon.className = 'player-icon';
     playerIcon.classList.add(currentPlayer);
 
-    const playerText = currentPlayer === Player.BLACK ? "黑子 下" : "白子 下";
-    this.currentPlayerElement.querySelector(
-      "span:not(.player-icon)",
-    ).textContent = playerText;
+    const playerText = currentPlayer === Player.BLACK ? '黑子 下' : '白子 下';
+    this.currentPlayerElement.querySelector('span:not(.player-icon)').textContent = playerText;
 
     // Update game status
-    let statusText = "游戏进行中";
-    let statusColor = "#4dff88";
+    let statusText = '游戏进行中';
+    let statusColor = '#4dff88';
 
     switch (gameState) {
       case GameState.BLACK_WIN:
-        statusText = "黑子 胜!";
-        statusColor = "#FFD700";
+        statusText = '黑子 胜!';
+        statusColor = '#FFD700';
         break;
       case GameState.WHITE_WIN:
-        statusText = "白子 胜!";
-        statusColor = "#FFD700";
+        statusText = '白子 胜!';
+        statusColor = '#FFD700';
         break;
       case GameState.DRAW:
-        statusText = "Game Draw!";
-        statusColor = "#FFA500";
+        statusText = 'Game Draw!';
+        statusColor = '#FFA500';
         break;
     }
 
@@ -781,15 +752,15 @@ class GomokuGame {
     this.gameStatusElement.style.color = statusColor;
 
     // Update button states
-    this.restartBtn.disabled = this.gameMode === "online" && gameState === GameState.PLAYING;
+    this.restartBtn.disabled = this.gameMode === 'online' && gameState === GameState.PLAYING;
 
-    if (this.gameMode === "online" && gameState === GameState.PLAYING) {
+    if (this.gameMode === 'online' && gameState === GameState.PLAYING) {
       // Online mode: repurpose undo button as surrender
       this.undoBtn.disabled = false;
       this.undoBtn.innerHTML = '<i class="fas fa-flag"></i> 认输';
     } else {
       this.undoBtn.disabled =
-        this.gameMode === "online" ||
+        this.gameMode === 'online' ||
         this.board.getMoveHistory().length === 0 ||
         gameState !== GameState.PLAYING;
       // Restore original undo text if it was changed
@@ -799,17 +770,17 @@ class GomokuGame {
     }
 
     // Disable hint in online mode
-    this.hintBtn.disabled = this.gameMode === "online";
+    this.hintBtn.disabled = this.gameMode === 'online';
 
     // Clear hint if game is over
     if (gameState !== GameState.PLAYING) {
       this.clearHint();
       // Show replay button when game ends
       if (this.replayBtn && this.board.getMoveHistory().length > 0) {
-        this.replayBtn.style.display = "";
+        this.replayBtn.style.display = '';
       }
     } else {
-      if (this.replayBtn) this.replayBtn.style.display = "none";
+      if (this.replayBtn) this.replayBtn.style.display = 'none';
     }
   }
 
@@ -817,7 +788,7 @@ class GomokuGame {
    * Restart the game
    */
   restartGame() {
-    if (this.gameMode === "online") {
+    if (this.gameMode === 'online') {
       this.online.sendRestart();
       return;
     }
@@ -829,8 +800,9 @@ class GomokuGame {
    * @param {string} mode - 'pvp' or 'ai'
    */
   setGameMode(mode) {
+    this.aiThinking++;
     this.gameMode = mode;
-    if (mode === "ai") {
+    if (mode === 'ai') {
       this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
     }
   }
@@ -841,7 +813,7 @@ class GomokuGame {
    */
   setAIDifficulty(difficulty) {
     this.aiDifficulty = difficulty;
-    if (this.gameMode === "ai") {
+    if (this.gameMode === 'ai') {
       this.aiPlayer = new AIPlayer(this.board, difficulty);
     }
   }
@@ -850,11 +822,12 @@ class GomokuGame {
    * Reset the game completely
    */
   resetGame() {
+    this.aiThinking++;
     this.exitReplayMode();
     this.board.reset();
     this.highlightedCell = null;
     this.clearHint();
-    if (this.gameMode === "ai") {
+    if (this.gameMode === 'ai') {
       this.aiPlayer = new AIPlayer(this.board, this.aiDifficulty);
     }
     this.drawBoard();
@@ -865,19 +838,37 @@ class GomokuGame {
    * Make AI move
    */
   makeAIMove() {
-    if (
-      this.gameMode !== "ai" ||
-      this.board.getGameState() !== GameState.PLAYING
-    ) {
+    if (this.gameMode !== 'ai' || this.board.getGameState() !== GameState.PLAYING) {
+      return;
+    }
+    if (this.board.getCurrentPlayer() !== this.aiPlayerColor) {
       return;
     }
 
+    // Invalidate any previously pending AI move (defense in depth against
+    // double-scheduling).
+    const token = ++this.aiThinking;
+
     // Show AI thinking indicator
-    this.gameStatusElement.textContent = "AI 思考中...";
-    this.gameStatusElement.style.color = "#FFA500";
+    this.gameStatusElement.textContent = 'AI 思考中...';
+    this.gameStatusElement.style.color = '#FFA500';
 
     // Use setTimeout to allow UI to update before AI computation
     setTimeout(() => {
+      // Re-validate everything: the user may have undone a move, restarted,
+      // or switched mode while the AI was thinking. A stale callback must
+      // never place a stone out of turn (it would land in the wrong color
+      // or on the wrong board).
+      const stale =
+        token !== this.aiThinking ||
+        this.gameMode !== 'ai' ||
+        this.board.getGameState() !== GameState.PLAYING ||
+        this.board.getCurrentPlayer() !== this.aiPlayerColor;
+      if (stale) {
+        this.updateUI();
+        return;
+      }
+
       try {
         const move = this.aiPlayer.getMove();
         if (move && this.board.makeMove(move.row, move.col)) {
@@ -886,7 +877,7 @@ class GomokuGame {
           this.undoBtn.disabled = this.board.getMoveHistory().length === 0;
         }
       } catch (e) {
-        console.error("AI move failed:", e);
+        console.error('AI move failed:', e);
         // Redraw board to clear any phantom stones from corrupted search
         this.drawBoard();
       } finally {
@@ -900,11 +891,14 @@ class GomokuGame {
    * Undo the last move
    */
   undoMove() {
+    // Cancel any pending AI move: undoing mid-think must not leave a stale
+    // callback that plays a move out of turn.
+    this.aiThinking++;
     if (this.board.undo()) {
       // In AI mode, undo both the AI's move and the player's move
       // so it's always the player's turn after undo
       if (
-        this.gameMode === "ai" &&
+        this.gameMode === 'ai' &&
         this.board.getMoveHistory().length > 0 &&
         this.board.getCurrentPlayer() === this.aiPlayerColor
       ) {
@@ -920,9 +914,9 @@ class GomokuGame {
    * Show a hint (improved implementation)
    */
   showHint() {
-    debugLog("Hint button clicked");
+    debugLog('Hint button clicked');
     if (this.board.getGameState() !== GameState.PLAYING || this.isAnimating) {
-      debugLog("Game not in playing state or animating, ignoring hint");
+      debugLog('Game not in playing state or animating, ignoring hint');
       return;
     }
 
@@ -937,15 +931,15 @@ class GomokuGame {
         row: Math.floor(BOARD_SIZE / 2),
         col: Math.floor(BOARD_SIZE / 2),
       };
-      debugLog("No hint position found, using center:", this.hintCell);
+      debugLog('No hint position found, using center:', this.hintCell);
     } else {
       this.hintCell = hintPosition;
-      debugLog("Hint position set to:", this.hintCell);
+      debugLog('Hint position set to:', this.hintCell);
     }
 
     // Activate hint
     this.isHintActive = true;
-    debugLog("Hint activated, isHintActive:", this.isHintActive);
+    debugLog('Hint activated, isHintActive:', this.isHintActive);
     this.drawBoard();
 
     // Start hint animation loop
@@ -962,7 +956,7 @@ class GomokuGame {
    * Looks for positions near existing stones
    */
   findBestHintPosition() {
-    debugLog("Finding best hint position");
+    debugLog('Finding best hint position');
     const emptyPositions = this.collectEmptyPositions();
 
     if (emptyPositions.length === 0) return null;
@@ -1015,7 +1009,7 @@ class GomokuGame {
     // Bonus for center positions
     const center = BOARD_SIZE / 2;
     const distanceFromCenter = Math.sqrt(
-      Math.pow(pos.row - center, 2) + Math.pow(pos.col - center, 2),
+      Math.pow(pos.row - center, 2) + Math.pow(pos.col - center, 2)
     );
     score += 20 / (distanceFromCenter + 1);
 
@@ -1028,14 +1022,8 @@ class GomokuGame {
   selectBestPosition(positions) {
     positions.sort((a, b) => b.score - a.score);
     const bestPos = positions[0];
-    debugLog(
-      "Best hint position found:",
-      bestPos.row,
-      bestPos.col,
-      "with score:",
-      bestPos.score,
-    );
-    debugLog("Total empty positions:", positions.length);
+    debugLog('Best hint position found:', bestPos.row, bestPos.col, 'with score:', bestPos.score);
+    debugLog('Total empty positions:', positions.length);
     return { row: bestPos.row, col: bestPos.col };
   }
 
@@ -1057,15 +1045,15 @@ class GomokuGame {
    * Start hint animation loop
    */
   startHintAnimation() {
-    debugLog("Starting hint animation");
+    debugLog('Starting hint animation');
     if (this.hintAnimationId) {
-      debugLog("Hint animation already running");
+      debugLog('Hint animation already running');
       return; // Already animating
     }
 
     const animate = () => {
       if (!this.isHintActive) {
-        debugLog("Hint not active, stopping animation");
+        debugLog('Hint not active, stopping animation');
         this.stopHintAnimation();
         return;
       }
@@ -1079,7 +1067,7 @@ class GomokuGame {
 
     // Start animation loop
     this.hintAnimationId = requestAnimationFrame(animate);
-    debugLog("Hint animation started with id:", this.hintAnimationId);
+    debugLog('Hint animation started with id:', this.hintAnimationId);
   }
 
   /**
@@ -1096,12 +1084,7 @@ class GomokuGame {
 
     // Clear only the hint area
     const clearRadius = radius * 3;
-    this.ctx.clearRect(
-      x - clearRadius,
-      y - clearRadius,
-      clearRadius * 2,
-      clearRadius * 2,
-    );
+    this.ctx.clearRect(x - clearRadius, y - clearRadius, clearRadius * 2, clearRadius * 2);
 
     // Redraw grid lines that were cleared
     this.ctx.strokeStyle = this.palette.grid;
@@ -1129,9 +1112,9 @@ class GomokuGame {
    * Stop hint animation loop
    */
   stopHintAnimation() {
-    debugLog("Stopping hint animation");
+    debugLog('Stopping hint animation');
     if (this.hintAnimationId) {
-      debugLog("Cancelling animation frame:", this.hintAnimationId);
+      debugLog('Cancelling animation frame:', this.hintAnimationId);
       cancelAnimationFrame(this.hintAnimationId);
       this.hintAnimationId = null;
     }
@@ -1153,8 +1136,8 @@ class GomokuGame {
     };
 
     // Show replay bar, hide normal controls
-    if (this.replayBar) this.replayBar.style.display = "";
-    if (this.replayBtn) this.replayBtn.style.display = "none";
+    if (this.replayBar) this.replayBar.style.display = '';
+    if (this.replayBtn) this.replayBtn.style.display = 'none';
 
     // Disable normal control buttons
     this.restartBtn.disabled = true;
@@ -1173,7 +1156,7 @@ class GomokuGame {
     this.inReplayMode = false;
     this.replay.stop();
 
-    if (this.replayBar) this.replayBar.style.display = "none";
+    if (this.replayBar) this.replayBar.style.display = 'none';
 
     // Re-enable normal controls
     this.restartBtn.disabled = false;
@@ -1185,33 +1168,45 @@ class GomokuGame {
     const bar = this.replayBar;
     if (!bar) return;
 
-    this.replayStepDisplay = bar.querySelector(".replay-step");
+    this.replayStepDisplay = bar.querySelector('.replay-step');
 
     const bind = (sel, fn) => {
       const el = bar.querySelector(sel);
-      if (el) el.addEventListener("click", fn);
+      if (el) el.addEventListener('click', fn);
     };
 
-    bind(".replay-first", () => { this.replay.first(); this.redrawReplayBoard(); });
-    bind(".replay-prev", () => { this.replay.prev(); this.redrawReplayBoard(); });
-    bind(".replay-toggle", () => {
+    bind('.replay-first', () => {
+      this.replay.first();
+      this.redrawReplayBoard();
+    });
+    bind('.replay-prev', () => {
+      this.replay.prev();
+      this.redrawReplayBoard();
+    });
+    bind('.replay-toggle', () => {
       this.replay.toggle();
       this.redrawReplayBoard();
     });
-    bind(".replay-next", () => { this.replay.next(); this.redrawReplayBoard(); });
-    bind(".replay-last", () => { this.replay.last(); this.redrawReplayBoard(); });
-    bind(".replay-exit", () => {
+    bind('.replay-next', () => {
+      this.replay.next();
+      this.redrawReplayBoard();
+    });
+    bind('.replay-last', () => {
+      this.replay.last();
+      this.redrawReplayBoard();
+    });
+    bind('.replay-exit', () => {
       this.exitReplayMode();
       this.resetGame();
     });
 
     // Speed buttons
-    const speedBtns = bar.querySelectorAll(".replay-speed");
+    const speedBtns = bar.querySelectorAll('.replay-speed');
     speedBtns.forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener('click', () => {
         const s = parseFloat(btn.dataset.speed);
         this.replay.setSpeed(s);
-        speedBtns.forEach((b) => b.classList.toggle("active", b === btn));
+        speedBtns.forEach((b) => b.classList.toggle('active', b === btn));
       });
     });
   }
@@ -1221,7 +1216,7 @@ class GomokuGame {
     if (this.replayStepDisplay) {
       this.replayStepDisplay.textContent = `${step + 1} / ${total}`;
     }
-    const toggleBtn = this.replayBar?.querySelector(".replay-toggle");
+    const toggleBtn = this.replayBar?.querySelector('.replay-toggle');
     if (toggleBtn) {
       toggleBtn.innerHTML = playing
         ? '<i class="fas fa-pause"></i>'
@@ -1257,13 +1252,13 @@ class GomokuGame {
 
     ctx.save();
     ctx.font = `bold ${Math.round(cellSize * 0.35)}px ${getComputedStyle(document.body).fontFamily}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
 
     // Determine stone color to choose text color
     const moveIdx = this.replay.currentMove;
     const player = this.replay.moves[moveIdx]?.player;
-    ctx.fillStyle = player === Player.BLACK ? "#ffffff" : "#000000";
+    ctx.fillStyle = player === Player.BLACK ? '#ffffff' : '#000000';
 
     ctx.fillText(String(num), x, y + 1);
     ctx.restore();
@@ -1276,19 +1271,19 @@ class GomokuGame {
     const lobby = this.onlineLobby;
     if (!lobby) return;
 
-    const createBtn = lobby.querySelector("#createRoomBtn");
-    const joinBtn = lobby.querySelector("#joinRoomBtn");
-    const codeInput = lobby.querySelector("#roomCodeInput");
+    const createBtn = lobby.querySelector('#createRoomBtn');
+    const joinBtn = lobby.querySelector('#joinRoomBtn');
+    const codeInput = lobby.querySelector('#roomCodeInput');
 
     if (createBtn) {
-      createBtn.addEventListener("click", () => {
+      createBtn.addEventListener('click', () => {
         this.enterOnlineGameView();
         this.online.connect();
         // Wait for connection before creating room
         const waitForConnection = () => {
           if (this.online.connected) {
             this.online.createRoom();
-            this.showOnlineStatus("正在创建房间...");
+            this.showOnlineStatus('正在创建房间...');
           } else {
             setTimeout(waitForConnection, 100);
           }
@@ -1298,11 +1293,11 @@ class GomokuGame {
     }
 
     if (joinBtn && codeInput) {
-      joinBtn.addEventListener("click", () => {
+      joinBtn.addEventListener('click', () => {
         const code = codeInput.value.trim().toUpperCase();
         if (!code) {
           this.enterOnlineGameView();
-          this.showOnlineStatus("请输入房间码");
+          this.showOnlineStatus('请输入房间码');
           return;
         }
         this.enterOnlineGameView();
@@ -1310,7 +1305,7 @@ class GomokuGame {
         const waitForConnection = () => {
           if (this.online.connected) {
             this.online.joinRoom(code);
-            this.showOnlineStatus("正在加入房间...");
+            this.showOnlineStatus('正在加入房间...');
           } else {
             setTimeout(waitForConnection, 100);
           }
@@ -1327,10 +1322,10 @@ class GomokuGame {
    */
   enterOnlineGameView() {
     if (this.startScreen) {
-      this.startScreen.style.display = "none";
+      this.startScreen.style.display = 'none';
     }
     if (this.gameModeDisplay) {
-      this.gameModeDisplay.textContent = "在线对战";
+      this.gameModeDisplay.textContent = '在线对战';
     }
     this.resetGame();
   }
@@ -1352,7 +1347,7 @@ class GomokuGame {
 
       // Update mode display with color info
       if (this.gameModeDisplay) {
-        const colorName = myColor === "black" ? "黑子" : "白子";
+        const colorName = myColor === 'black' ? '黑子' : '白子';
         this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
       }
     };
@@ -1367,22 +1362,22 @@ class GomokuGame {
 
     this.online.onGameEnd = ({ winner, reason }) => {
       let msg;
-      if (reason === "surrender") {
-        msg = winner === this.onlineMyColor ? "对手认输，你赢了!" : "你认输了!";
-      } else if (reason === "disconnect") {
-        msg = "对手断线，你赢了!";
+      if (reason === 'surrender') {
+        msg = winner === this.onlineMyColor ? '对手认输，你赢了!' : '你认输了!';
+      } else if (reason === 'disconnect') {
+        msg = '对手断线，你赢了!';
       } else if (winner === this.onlineMyColor) {
-        msg = "你赢了!";
+        msg = '你赢了!';
       } else if (winner === null) {
-        msg = "平局!";
+        msg = '平局!';
       } else {
-        msg = "你输了!";
+        msg = '你输了!';
       }
 
       // Update local board state so restart button enables
-      if (winner === "black") {
+      if (winner === 'black') {
         this.board.gameState = GameState.BLACK_WIN;
-      } else if (winner === "white") {
+      } else if (winner === 'white') {
         this.board.gameState = GameState.WHITE_WIN;
       } else {
         this.board.gameState = GameState.DRAW;
@@ -1393,7 +1388,7 @@ class GomokuGame {
     };
 
     this.online.onOpponentDisconnect = () => {
-      this.showOnlineStatus("对手已断线，等待重连...");
+      this.showOnlineStatus('对手已断线，等待重连...');
     };
 
     this.online.onOpponentReconnect = () => {
@@ -1402,13 +1397,13 @@ class GomokuGame {
 
     this.online.onGameRestart = (myColor) => {
       // 换先：更新本局颜色
-      if (myColor === "black" || myColor === "white") {
+      if (myColor === 'black' || myColor === 'white') {
         this.onlineMyColor = myColor;
       }
       this.resetGame();
       // 刷新模式显示中的颜色信息
       if (this.gameModeDisplay) {
-        const colorName = this.onlineMyColor === "black" ? "黑子" : "白子";
+        const colorName = this.onlineMyColor === 'black' ? '黑子' : '白子';
         this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
       }
       this.hideOnlineStatus();
@@ -1419,8 +1414,8 @@ class GomokuGame {
     };
 
     this.online.onConnectionChange = (connected) => {
-      if (!connected && this.gameMode === "online") {
-        this.showOnlineStatus("连接已断开");
+      if (!connected && this.gameMode === 'online') {
+        this.showOnlineStatus('连接已断开');
       }
     };
 
@@ -1430,15 +1425,15 @@ class GomokuGame {
 
       // Map server state to client GameState
       let clientState;
-      if (msg.state === "playing") {
+      if (msg.state === 'playing') {
         clientState = GameState.PLAYING;
         this.hideOnlineStatus();
         // Mark game as in-progress so clicks work
         this.online.inGame = true;
-      } else if (msg.state === "finished") {
-        if (msg.winner === "black") {
+      } else if (msg.state === 'finished') {
+        if (msg.winner === 'black') {
           clientState = GameState.BLACK_WIN;
-        } else if (msg.winner === "white") {
+        } else if (msg.winner === 'white') {
           clientState = GameState.WHITE_WIN;
         } else {
           clientState = GameState.DRAW;
@@ -1454,7 +1449,7 @@ class GomokuGame {
 
       // Update mode display with color info
       if (this.gameModeDisplay && this.onlineMyColor) {
-        const colorName = this.onlineMyColor === "black" ? "黑子" : "白子";
+        const colorName = this.onlineMyColor === 'black' ? '黑子' : '白子';
         this.gameModeDisplay.textContent = `在线对战 (${colorName})`;
       }
 
@@ -1467,37 +1462,37 @@ class GomokuGame {
   /** Show an overlay status message on the board */
   showOnlineStatus(message) {
     if (!this.onlineOverlay) {
-      this.onlineOverlay = document.getElementById("onlineOverlay");
+      this.onlineOverlay = document.getElementById('onlineOverlay');
     }
     if (this.onlineOverlay) {
       this.onlineOverlay.textContent = message;
-      this.onlineOverlay.classList.add("visible");
+      this.onlineOverlay.classList.add('visible');
     } else {
       // Fallback: use game status
       this.gameStatusElement.textContent = message;
-      this.gameStatusElement.style.color = "#FFA500";
+      this.gameStatusElement.style.color = '#FFA500';
     }
   }
 
   /** Hide the online status overlay */
   hideOnlineStatus() {
     if (this.onlineOverlay) {
-      this.onlineOverlay.classList.remove("visible");
-      this.onlineOverlay.textContent = "";
+      this.onlineOverlay.classList.remove('visible');
+      this.onlineOverlay.textContent = '';
     }
     this.updateUI();
   }
 
   /** Show online lobby overlay on the game screen */
   showOnlineLobby() {
-    this.showOnlineStatus("选择操作：创建房间或输入房间码加入");
+    this.showOnlineStatus('选择操作：创建房间或输入房间码加入');
 
     // Create lobby overlay content if not already created
-    let lobbyOverlay = document.getElementById("onlineLobbyOverlay");
+    let lobbyOverlay = document.getElementById('onlineLobbyOverlay');
     if (!lobbyOverlay) {
-      lobbyOverlay = document.createElement("div");
-      lobbyOverlay.id = "onlineLobbyOverlay";
-      lobbyOverlay.className = "online-lobby-overlay";
+      lobbyOverlay = document.createElement('div');
+      lobbyOverlay.id = 'onlineLobbyOverlay';
+      lobbyOverlay.className = 'online-lobby-overlay';
       lobbyOverlay.innerHTML = `
         <div class="lobby-overlay-card">
           <h3>在线对战</h3>
@@ -1520,14 +1515,14 @@ class GomokuGame {
       this.canvas.parentElement.appendChild(lobbyOverlay);
     }
 
-    lobbyOverlay.style.display = "flex";
+    lobbyOverlay.style.display = 'flex';
     this.hideOnlineStatus();
 
     // Wire up lobby overlay buttons
-    const createBtn = document.getElementById("overlayCreateBtn");
-    const joinBtn = document.getElementById("overlayJoinBtn");
-    const codeInput = document.getElementById("overlayRoomCodeInput");
-    const backBtn = document.getElementById("overlayBackBtn");
+    const createBtn = document.getElementById('overlayCreateBtn');
+    const joinBtn = document.getElementById('overlayJoinBtn');
+    const codeInput = document.getElementById('overlayRoomCodeInput');
+    const backBtn = document.getElementById('overlayBackBtn');
 
     // Remove old listeners by cloning
     const freshCreate = createBtn.cloneNode(true);
@@ -1537,9 +1532,9 @@ class GomokuGame {
     const freshBack = backBtn.cloneNode(true);
     backBtn.parentNode.replaceChild(freshBack, backBtn);
 
-    freshCreate.addEventListener("click", () => {
+    freshCreate.addEventListener('click', () => {
       this.online.connect();
-      lobbyOverlay.style.display = "none";
+      lobbyOverlay.style.display = 'none';
       const waitForConnection = () => {
         if (this.online.connected) {
           this.online.createRoom();
@@ -1550,14 +1545,14 @@ class GomokuGame {
       waitForConnection();
     });
 
-    freshJoin.addEventListener("click", () => {
+    freshJoin.addEventListener('click', () => {
       const code = codeInput.value.trim().toUpperCase();
       if (!code) {
-        this.showOnlineStatus("请输入房间码");
+        this.showOnlineStatus('请输入房间码');
         return;
       }
       this.online.connect();
-      lobbyOverlay.style.display = "none";
+      lobbyOverlay.style.display = 'none';
       const waitForConnection = () => {
         if (this.online.connected) {
           this.online.joinRoom(code);
@@ -1568,25 +1563,25 @@ class GomokuGame {
       waitForConnection();
     });
 
-    freshBack.addEventListener("click", () => {
-      lobbyOverlay.style.display = "none";
-      this.gameMode = "pvp";
+    freshBack.addEventListener('click', () => {
+      lobbyOverlay.style.display = 'none';
+      this.gameMode = 'pvp';
       this.online.disconnect();
       // Show start screen again
       if (this.startScreen) {
-        this.startScreen.style.display = "flex";
-        this.pvpBtn.classList.add("selected");
-        this.aiBtn.classList.remove("selected");
-        if (this.onlineBtn) this.onlineBtn.classList.remove("selected");
+        this.startScreen.style.display = 'flex';
+        this.pvpBtn.classList.add('selected');
+        this.aiBtn.classList.remove('selected');
+        if (this.onlineBtn) this.onlineBtn.classList.remove('selected');
       }
     });
   }
 }
 
 // Initialize game when DOM is loaded
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener('DOMContentLoaded', () => {
   const game = new GomokuGame();
-  debugLog("Gomoku game initialized!");
+  debugLog('Gomoku game initialized!');
 
   // Make game accessible from console for debugging
   window.gomokuGame = game;
