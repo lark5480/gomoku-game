@@ -233,6 +233,14 @@ export class Board {
   }
 
   /**
+   * Get the most recent move
+   * @returns {Object|null} Last move {row, col, player} or null
+   */
+  getLastMove() {
+    return this.moveHistory.length > 0 ? this.moveHistory[this.moveHistory.length - 1] : null;
+  }
+
+  /**
    * Get cell value at position
    * @param {number} row - Row index
    * @param {number} col - Column index

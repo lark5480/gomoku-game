@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "format": "prettier --write .",
-    "test": "node tests/test.mjs && node tests/ai.test.mjs && node tests/ai-tactics.test.mjs"
+    "test": "node tests/test.mjs && node tests/ai.test.mjs && node tests/ai-tactics.test.mjs && node tests/ai-incremental.test.mjs && node tests/ai-selfplay.test.mjs && node tests/workers-room.test.mjs"
   },
   "license": "ISC",
   "type": "module",
