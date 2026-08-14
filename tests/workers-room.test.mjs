@@ -15,9 +15,9 @@ const roomSrc = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'workers', 'room.js'),
   'utf8'
 );
-const body = roomSrc
-  .replace(/import \{ WebSocketPair \} from ['"]cloudflare:workers['"];/, '')
-  .replace('export class Room', 'class Room');
+// room.js uses the runtime GLOBAL WebSocketPair (injected as a parameter
+// below); the only edit needed is dropping the ES-module export keyword.
+const body = roomSrc.replace('export class Room', 'class Room');
 const fakePairModule = { exports: {} };
 const loadRoom = (WebSocketPair) =>
   new Function('WebSocketPair', 'Response', 'TextDecoder', `${body}\nreturn Room;`)(

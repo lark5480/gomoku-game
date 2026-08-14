@@ -13,8 +13,10 @@
  *   also keeps the DO from being evicted.
  * - Room state is in-memory only. A Worker redeploy mid-game drops rooms —
  *   the same caveat as the old single-process server.
+ *
+ * Note: WebSocketPair is a Workers runtime GLOBAL (not an export of
+ * 'cloudflare:workers'); the test harness injects it as a function parameter.
  */
-import { WebSocketPair } from 'cloudflare:workers';
 
 const BOARD_SIZE = 15;
 const ROOM_TTL_MS = 10 * 60 * 1000; // 10 minutes without activity
