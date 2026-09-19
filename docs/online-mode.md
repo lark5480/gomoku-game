@@ -4,57 +4,67 @@
 
 在线模式使用 WebSocket 实现房间制对战。服务端在 `server/index.js`，客户端在 `js/online.js`（OnlineManager 类），由 `js/game.js`（GomokuGame 类）协调 UI 交互。
 
+Cloudflare Workers 部署（`workers/room.js`）实现同一套协议，客户端零改动。
+
+### 客户端模块分工
+
+| 位置                                                                            | 职责                                                        |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `OnlineManager`（`js/online.js`）                                               | WebSocket 生命周期、消息收发、`onXxx` 回调通知              |
+| `GomokuGame.setupOnlineLobby()`（`js/game.js`）                                 | 大厅按钮绑定（建房 / 加入 / 入口切换）                      |
+| `GomokuGame.setupOnlineCallbacks()`                                             | **统一注册**所有 `onXxx` 回调（唯一入口，别处不要直接赋值） |
+| `GomokuGame.enterOnlineGameView()` / `showOnlineLobby()` / `showOnlineStatus()` | 视图切换与状态提示                                          |
+
+可用回调：`onRoomCreated`、`onGameStart`、`onOpponentMove`、`onGameEnd`、`onGameState`、`onOpponentDisconnect`、`onOpponentReconnect`、`onGameRestart`、`onChat`、`onError`、`onConnectionChange`。
+
 ## 通信协议
 
 所有消息为 JSON 格式：`{ type: "xxx", ... }`。
 
 ### 客户端 → 服务端
 
-| type | 参数 | 说明 |
-|------|------|------|
-| `create` | - | 创建新房间 |
-| `join` | `roomCode: string` | 加入已有房间 |
-| `move` | `row, col: number` | 落子 |
-| `restart` | - | 请求重开一局（仅 finished 状态有效） |
-| `chat` | `text: string` | 发送聊天消息 |
+| type        | 参数               | 说明                                                                                   |
+| ----------- | ------------------ | -------------------------------------------------------------------------------------- |
+| `create`    | -                  | 创建新房间（会先离开当前所在房间）                                                     |
+| `join`      | `roomCode: string` | 加入已有房间；房间满但有 `null` 槽位时按重连处理                                       |
+| `move`      | `row, col: number` | 落子（服务端校验轮次与格子占用，非法消息静默丢弃）                                     |
+| `surrender` | -                  | 认输，仅 `playing` 状态有效，对手获胜                                                  |
+| `restart`   | -                  | 请求重开一局（仅 `finished` 状态有效）                                                 |
+| `chat`      | `text: string`     | 发送聊天消息，仅转发给对手（**服务端已实现，客户端 UI 尚未接入**，`game.js` 无调用点） |
 
 ### 服务端 → 客户端
 
-| type | 触发时机 | 携带字段 |
-|------|----------|----------|
-| `room:created` | 房间创建成功 | `roomCode`, `color: "black"` |
-| `room:joined` | 加入房间成功 | `color: "white"`, `opponentReady` |
-| `game:start` | 双方就绪，游戏开始 | - |
-| `move` | 对手落子 | `row`, `col`, `player` |
-| `game:end` | 游戏结束 | `winner: "black"\|"white"\|null`, `reason?` |
-| `game:state` | 重连时同步状态 | `grid`, `currentPlayer`, `state`, `winner` |
-| `game:restart` | 重开一局 | - |
-| `opponent:disconnect` | 对手断线 | - |
-| `opponent:reconnect` | 对手重连 | - |
-| `error` | 操作失败 | `message` |
-| `room:closed` | 房间被清理 | - |
+| type                  | 触发时机           | 携带字段                                                                                            |
+| --------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `room:created`        | 房间创建成功       | `roomCode`, `color: "black"`                                                                        |
+| `room:joined`         | 加入/重连成功      | `color: "black"\|"white"`, `opponentReady: true`                                                    |
+| `game:start`          | 双方就绪，游戏开始 | -（颜色沿用此前 `room:joined`/`room:created` 告知的值）                                             |
+| `move`                | 对手落子           | `row`, `col`, `player`                                                                              |
+| `game:end`            | 游戏结束           | `winner: "black"\|"white"\|null`, `reason?: "disconnect"\|"surrender"`（正常五连获胜时无 `reason`） |
+| `game:state`          | 重连时同步状态     | `grid`, `currentPlayer`, `state`, `winner`                                                          |
+| `game:restart`        | 重开一局           | `color: "black"\|"white"` — **逐玩家单发而非广播**，见下文「重开一局」                              |
+| `opponent:disconnect` | 对手断线           | -                                                                                                   |
+| `opponent:reconnect`  | 对手重连           | -                                                                                                   |
+| `chat`                | 对手发来聊天消息   | `text`（同上，暂无 UI 消费 `onChat`）                                                               |
+| `error`               | 操作失败           | `message`                                                                                           |
+| `room:closed`         | 房间被清理         | -                                                                                                   |
+
+> `color` 一律指**本局实际执子颜色**，而非固定席位：换先后同一槽位的玩家颜色会翻转。
 
 ## 房间生命周期
 
 ```
-创建 → 等待中 → 对战中 → 结束
-  │                │        │
-  └── 10min TTL ──→ 清理    │
-                   │        │
-      断线(30s)→ 对手胜     │
-                   │        │
-      重连成功 → 恢复对局   │
-                            │
-                     restart → 对战中
+waiting ──双方加入──▶ playing ──┬─ 五连 / 满盘 ─────▶ finished ──restart(换先)──▶ playing
+                                ├─ surrender ───────▶ finished
+                                ├─ 断线 30s 未重连 ──▶ finished（对手胜）
+                                └─ 断线 ─▶ 重连成功 ─▶ playing（恢复原局）
+
+任意状态 ──10min 无任何活动──▶ 房间清理（双方断连 + room:closed）
 ```
 
-### 状态机
-
-```
-waiting ──(双方加入)──→ playing ──(五连/满盘)──→ finished
-                            ↑                        │
-                            └──(restart 消息)─────────┘
-```
+- `waiting`：已建房但只有一人
+- `playing`：服务端按 `currentPlayer` 校验轮次
+- `finished`：只接受 `restart`，其余走子消息忽略
 
 ## 重连机制
 
@@ -68,22 +78,49 @@ waiting ──(双方加入)──→ playing ──(五连/满盘)──→ fin
 
 1. 玩家重新连接 WebSocket，发送 `{ type: "join", roomCode }`
 2. 服务端检测 `room.full && room.players` 中有 `null` 槽位
-3. 替换 `null` 槽位为新 WebSocket 连接
-4. 发送 `room:joined`（含玩家颜色）+ `game:state`（含完整棋盘状态）
+3. 替换 `null` 槽位为新 WebSocket 连接，并清除重连截止时刻
+4. 发送 `room:joined`（含该槽位**换算换先后**的实际颜色）+ `game:state`（含完整棋盘状态）
 5. 客户端 `onGameState` 回调恢复棋盘、清除覆盖层、同步玩家颜色
 
 ### 超时处理
 
 - 30 秒内未重连 → 对手自动获胜（`game:end` + `reason: "disconnect"`）
-- 10 分钟无任何活动 → 房间清理，双方断连
+- 10 分钟无任何活动 → 房间清理，双方断连（`room:closed`）
 
-## 重开一局
+> 本地服务器的重连窗口可用环境变量 `RECONNECT_TIMEOUT_MS` 覆盖（仅供测试，生产默认 30 秒）。
+
+### 约定：座位不等于颜色
+
+`players` 数组的下标只是**席位**，实际执子颜色由 `colorSwap` 决定：
+
+- 本地服务器：`Room.playerColor(ws)` / `Room.playerColorAt(idx)`
+- Workers：`_playerColor(room, idx)`
+
+任何“座位 → 颜色”的推导（重连回填颜色、断线超时判胜方）都必须走这两个函数，
+**不得写死 `idx === 0 ? "black" : "white"`**。
+
+> 历史缺陷：两侧都曾在此写死——Workers 的 `_playerColor` 已统一；本地服务器的重连分支与
+> 断线超时判胜一度退回下标直推（先换先 → 断线 → 重连 时会给错颜色，超时胜方会判给已离场的一方），
+> 现已改走 `playerColorAt`。回归守护：`tests/server-room.test.mjs` 与 `tests/workers-room.test.mjs`
+> 各自的 `keeps the swapped color` / `awards the swapped color` 断言。
+
+## 重开一局（自动换先）
 
 - 任意一方在游戏结束后点击"重新开始"
-- 客户端发送 `{ type: "restart" }`
-- 服务端重置房间：清空棋盘、`currentPlayer = "black"`、`state = "playing"`
-- 广播 `{ type: "game:restart" }` 给双方
-- 双方客户端同时清空棋盘、开始新对局
+- 客户端发送 `{ type: "restart" }`（仅 `finished` 状态有效，否则忽略）
+- 服务端重置房间：翻转 `colorSwap`、清空棋盘、`currentPlayer = "black"`、`state = "playing"`、`winner = null`
+- **逐位玩家单发** `{ type: "game:restart", color }`，而非广播同一条消息
+- 客户端据 `color` 更新 `myColor` 后再触发 `onGameRestart`，双方棋盘同时清空开始新对局
+
+> 为什么必须单发：换先后两位玩家的颜色互换，广播同一条 `game:restart` 会让其中一方执错颜色。
+> 这是 `game:restart` 携带 `color` 字段的全部原因，改动时不要退回广播。
+
+## 认输
+
+- 客户端发送 `{ type: "surrender" }`，仅 `playing` 状态有效
+- 服务端把发送方的对色判为胜方：`state = "finished"`、`winner = 对方颜色`
+- 广播 `{ type: "game:end", winner, reason: "surrender" }` 给双方，并清除可能在跑的重连计时器
+- 客户端 `onGameEnd` 据 `reason` 区分展示（认输 / 断线 / 五连获胜）
 
 ## 关键设计决策
 
@@ -121,11 +158,11 @@ Netlify (静态前端)           WebSocket 服务器
 
 ### 方案对比
 
-| 方案 | 费用 | 稳定性 | 需要本机 | 难度 |
-|------|------|--------|---------|------|
-| 🌟 **Cloudflare Workers** | 免费 | ★★★★ | 否 | 低（国内需自定义域名） |
-| Cloudflare Tunnel | 免费 | ★★★ | 是 | 低 |
-| Zeabur / Render | 有免费额度 | ★★★★★ | 否 | 低 |
+| 方案                      | 费用       | 稳定性 | 需要本机 | 难度                   |
+| ------------------------- | ---------- | ------ | -------- | ---------------------- |
+| 🌟 **Cloudflare Workers** | 免费       | ★★★★   | 否       | 低（国内需自定义域名） |
+| Cloudflare Tunnel         | 免费       | ★★★    | 是       | 低                     |
+| Zeabur / Render           | 有免费额度 | ★★★★★  | 否       | 低                     |
 
 ---
 
@@ -147,11 +184,11 @@ Netlify (静态前端)           WebSocket 服务器
 1. 注册 [Cloudflare](https://cloudflare.com) 账号（免费），并认领一个 `*.workers.dev` 子域名
 2. Workers & Pages → Create → **Workers Builds** → 连接本项目 GitHub 仓库，填写：
 
-   | 配置项 | 值 |
-   |--------|-----|
-   | 根目录 | `workers/` |
+   | 配置项   | 值                       |
+   | -------- | ------------------------ |
+   | 根目录   | `workers/`               |
    | 构建命令 | 留空（代码零第三方依赖） |
-   | 部署命令 | `npx wrangler deploy` |
+   | 部署命令 | `npx wrangler deploy`    |
 
 3. 部署成功后得到 `https://gomoku-game.你的子域名.workers.dev`
 4. （国内使用必做）购买/申请一个域名加入 Cloudflare → 该 Worker 的

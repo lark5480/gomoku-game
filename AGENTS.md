@@ -1,102 +1,113 @@
 # AGENTS.md
 
-此文件为 Codex (Codex.ai/code) 提供在此代码库中工作的指导。
+此文件为 Codex (Codex.ai/code) 及其他 AI 编码代理提供在此代码库中工作的指导。
+
+**职责边界**：本文件只维护命令、仓库地图、不可破坏的不变量与文档路由；实现细节的唯一归属地是
+[docs/development.md](docs/development.md)，在线协议与部署的唯一归属地是 [docs/online-mode.md](docs/online-mode.md)。
+新增说明请写进对应专题文档，不要在本文件里展开机制描述——旧版本在三个文件里抄写同一批细节，任何一次单点更新都会造成分叉。
+[CLAUDE.md](CLAUDE.md) 是指向本文件的桩文件，不要在那里追加内容。
 
 ## 项目概述
 
-使用 HTML5 Canvas + 原生 JavaScript (ES6+) 实现的五子棋游戏。15x15 棋盘，支持双人对战、AI 对战（三种难度）和在线对战（WebSocket 房间制）。
+HTML5 Canvas + 原生 JavaScript (ES6+) 实现的 15x15 五子棋：双人对战、AI 对战（三种难度）、
+在线对战（WebSocket 房间制，断线重连 + 重开自动换先）、棋谱回放（1x/2x/4x 调速）、亮暗主题（默认跟随系统）。
+
+## 文档路由
+
+| 你要做什么                     | 读哪份                                            |
+| ------------------------------ | ------------------------------------------------- |
+| 跑起来 / 拉人对战              | [README.md](README.md)                            |
+| 改前端逻辑、调 AI 棋力、写测试 | [docs/development.md](docs/development.md)        |
+| 改在线协议、房间逻辑或部署     | [docs/online-mode.md](docs/online-mode.md)        |
+| 代码风格 / 测试命名约定        | `.claude/rules/`（`code-style.md`、`testing.md`） |
 
 ## 开发命令
 
-- `npm start` - 启动本地开发服务器（HTTP + WebSocket，端口 8000）
+- `npm start` - 启动本地开发服务器（HTTP + WebSocket，端口 8000；静态资源取自仓库根目录）
 - `npm run format` - Prettier 格式化（配置在 `.prettierrc.json`）
-- `npm test` - 运行全部测试（Board + AI 棋型 + AI 战术 + 增量评估 + 自对弈冒烟 + Workers 协议，共 95 项断言）
-- `node tests/test.mjs` - 仅运行 Board 测试（10 项）
-- `node tests/ai.test.mjs` - 仅运行 AI 棋型评估测试（6 项）
-- `node tests/ai-tactics.test.mjs` - 仅运行 AI 战术测试（13 项：终端评估/跳型/双威胁/VCF/三态未知/强制候选）
-- `node tests/ai-incremental.test.mjs` - 仅运行增量评估一致性测试（4 项，含 Zobrist 键一致性）
-- `node tests/ai-selfplay.test.mjs` - 仅运行自对弈冒烟测试（1 项）
-- `node tests/workers-room.test.mjs` - 仅运行 Workers 房间协议测试（2 组，离线模拟 Cloudflare 运行时）
+- `npm test` - 运行全部测试套件（**提交前置条件**，必须全绿）
+- 单跑某个套件：`node tests/<文件名>.mjs`
 
-## 架构
+| 测试文件                        | 覆盖范围                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `tests/test.mjs`                | Board 规则：状态转换、落子校验、胜负检测、撤销、边界与无效输入                                  |
+| `tests/ai.test.mjs`             | AI 棋型评估：活三 / 冲四 / 不连续 / 双面 / 杀棋                                                 |
+| `tests/ai-tactics.test.mjs`     | AI 战术：终端评估、跳型、双威胁、VCF 攻杀与防守、三态未知、强制候选                             |
+| `tests/ai-incremental.test.mjs` | 增量评估与全盘扫描一致性、Zobrist 键、搜索中断后状态复原                                        |
+| `tests/ai-selfplay.test.mjs`    | 自对弈冒烟：连续多手不破坏棋盘状态                                                              |
+| `tests/workers-room.test.mjs`   | Workers 房间协议：建房 / 走子 / 换先 / 重连 / 超时（离线模拟运行时）                            |
+| `tests/server-room.test.mjs`    | 本地服务器端到端协议：起真实服务 + 真实 WebSocket 客户端，覆盖认输 / 换先 / 重连颜色 / 超时判胜 |
 
-### 文件结构
+> 本文件刻意不写断言条数——这类数字每加一个测试就腐烂一次。需要规模就直接跑 `npm test`。
+
+## 仓库地图
 
 ```
-├── play-online.bat     # 联机一键通道入口（双击：服务+隧道+链接复制到剪贴板）
-├── play-online.ps1     # 一键通道脚本（自动抓取 trycloudflare 链接）
-├── index.html          # 主 HTML 文件
-├── css/style.css       # 响应式样式
+├── index.html              # 主页面（引 js/game.js，设 window.__GOMOKO_WS_URL 可临时覆盖服务地址）
+├── css/style.css           # 响应式样式 + 亮/暗主题变量
+├── play-online.bat / .ps1  # 联机一键通道：起服务 + 开隧道 + 公网链接进剪贴板（需 cloudflared.exe）
 ├── js/
-│   ├── utils.js        # 工具函数（坐标转换用 Math.round 取最近交叉点）
-│   ├── board.js        # 游戏逻辑（Board 类、胜利检测、移动验证、撤销、restoreState）
-│   ├── game.js         # 主控制器（Canvas 渲染、交互、AI 调度、在线协调、回放入口）
-│   ├── ai.js           # AI 对战（AIPlayer 类、三种难度）
-│   ├── online.js       # 在线管理（OnlineManager 类、WebSocket 连接/房间/同步）
-│   ├── replay.js       # 回放引擎（ReplayPlayer 类、逐帧播放 + 调速）
-│   ├── theme.js        # 主题管理（亮/暗切换、Canvas 调色板读取）
-│   └── config.js        # 全局配置（WebSocket 地址、AI 参数）
-├── server/             # HTTP + WebSocket 服务器
-│   └── index.js        # 静态文件服务 + 房间管理（创建/加入/重连/重启/超时清理）
-├── workers/            # Cloudflare Workers 部署（在线对战无服务器化）
-│   ├── wrangler.toml   # Worker 配置（Durable Object 绑定 ROOMS）
-│   ├── index.js        # 入口：WebSocket 升级路由到 registry DO
-│   └── room.js         # Room DO：房间注册与协议中继（镜像 server/index.js）
-├── tests/
-│   ├── test.mjs         # 棋盘逻辑测试（10 项）
-│   ├── ai.test.mjs      # AI 棋型评估测试（6 项）
-│   ├── ai-tactics.test.mjs # AI 战术测试（13 项：终端评估/跳型/双威胁/VCF/三态未知/强制候选）
-│   ├── ai-incremental.test.mjs # 增量评估一致性测试（4 项，含 Zobrist 键一致性）
-│   ├── ai-selfplay.test.mjs # 自对弈冒烟测试（1 项）
-│   └── workers-room.test.mjs # Workers 房间协议测试（2 组，离线模拟运行时）
-└── docs/
-    ├── development.md    # 开发指南（架构、约定、FAQ）
-    └── online-mode.md    # 在线对战协议与流程文档
+│   ├── config.js           # 唯一配置出口（wsUrl；null = 自动用 location.host）
+│   ├── utils.js            # 纯函数工具（坐标转换等）
+│   ├── board.js            # 规则引擎：Board 类、胜负检测、撤销、restoreState
+│   ├── ai.js               # AIPlayer 类：评估 + Alpha-Beta/PVS + VCF/双威胁预检 + 开局原则
+│   ├── game.js             # 主控制器：Canvas 渲染、交互、AI 调度、在线协调、回放/提示入口
+│   ├── online.js           # OnlineManager：WebSocket 生命周期、消息收发、onXxx 回调通知
+│   ├── replay.js           # ReplayPlayer：逐帧回放与调速
+│   └── theme.js            # 亮/暗切换、从 CSS 读取 Canvas 调色板
+├── server/index.js         # 本地 HTTP + WebSocket 服务、Room 状态机（创建/加入/重连/认输/重开/超时清理）
+├── workers/                # Cloudflare Workers 部署（registry Durable Object，协议镜像本地服务器）
+├── tests/                  # 见上方测试表
+├── docs/                   # development.md（实现细节）、online-mode.md（协议与部署）
+└── public/                 # ⚠️ 已 gitignore 的历史构建副本，非源码，请勿编辑（真实源码在 js/）
 ```
 
-### 关键设计
+`docs/superpowers/` 同样被 gitignore，存放代理生成的历史计划，内容可能已被后续重构取代。
 
-- AI 双面评估：己方加分、对手减分，叶子节点即可见威胁；棋型分类支持连续与单间隙跳型（`classifyLine`：活三含真活三判定，跳活三/跳冲四/嵌四均计入威胁），并返回 `stones` 参与子数
-- 评估归一化：四以下棋型按参与子数均摊（一个棋型只计一次分，不再逐子重复累加），四/五保持逐子以维持统治力；另有中心度加成（`posBonus`）与对手急迫威胁加权（`DEFENSE_URGENCY`，活三及以上刚成形必须应答）
-- Alpha-Beta 搜索使用 makeMove/undo 原地操作，无 clone 开销；主循环用 PVS（主变例搜索，先全窗口后零窗口复检），最后一层候选收窄到 radius 1（所有成五/堵五/冲四点必与棋子相邻）
-- 增量评估：搜索期间按"每子分方向棋型贡献"维护累加器（`_searchMake`/`_searchUndo` 配对更新，落子只需重算受影响子的相连方向），叶子评估 O(1)；搜索外回退全盘扫描（`_evaluateBoardFull`，亦为参考实现）
-- Negamax 终端约定：`makeMove` 获胜时不切换 `currentPlayer`，因此终端节点返回 `-(FIVE + depth)`，父节点取负后即为获胜价值（深度奖励使更快的胜利得分更高）
-- 置换表带 EXACT/LOWER/UPPER 边界标记并存储最佳走法（浅层条目的走法也用于排序）；胜负分（绝对值 ≥ FIVE）不入表（与深度相关）；key 为增量维护的 Zobrist 哈希（旧实现的全盘字符串拼接存在歧义碰撞：`'black'+''+'white'` 与 `'black'+'white'` 同值）
-- 根节点走法按启发式评分排序（攻击+防御+中心度），困难模式根候选收紧至前 24（`ROOT_CANDIDATE_LIMIT`），战术点（成五/冲四/双威胁及其堵点，`collectForcedCells`）以顶替低分候选的方式强制保留；内部节点置换表走法优先尝试，其余排序后取前 15（另最多保留 3 个四类威胁点）
-- 开局原则模块（中等/困难，前 4 手应答，`OPENING_MAX_HISTORY=7`）：盘面无三/四棋型时，抢占对手"成三成长点"（一步前瞻选剩余发展点最少者，平分时优选贴身封堵），否则向中心发展；首应手走对方棋子的朝中心斜邻
-- 搜索前预检链（中等/困难）：直接取胜 → 必堵 → 开局原则 → 己方 VCF → 对手 VCF 防守 → 己方双威胁（四三/双三/双四，落子前做单子化解/竞速验证 `verifyDoubleThreat`）→ 占据对手双威胁点；对手 VCF 无解时改走 `findDefensiveMove` 堵最急威胁
-- VCF（连续冲四）搜索：只展开制造冲四/活四的走法，防守方回应被迫，`setCellDirect` 原地推演，不污染走法历史；迭代加深（4/8/12/16/20 层）并带节点与时间预算，预算按候选密度缩放；结果三态化——找到 / 证明没有（`vcfExhausted=false`）/ 未知（预算或时限截断，`vcfExhausted=true`，防御复检不接受未知结果）
-- `IS_DEV` 标志控制调试日志
+## 不可破坏的不变量
 
-### 在线模式架构
+改到相关代码前先读 `docs/development.md` 的对应章节；括号内是守护测试。
 
-- **OnlineManager**（`js/online.js`）：WebSocket 生命周期管理、消息收发、回调通知
-- **GomokuGame 在线方法**（`js/game.js`）：`setupOnlineLobby`/`showOnlineLobby`/`setupOnlineCallbacks`/`enterOnlineGameView`
-- **本地服务器**（`server/index.js`）：Room 类管理房间状态，支持创建/加入/重连/重启/超时清理
-- **Cloudflare Workers 部署**（`workers/`）：单 registry Durable Object 内存注册房间，WebSocket 休眠 API + alarm 定时清理；协议与本地服务器一致，客户端零改动。⚠️ `*.workers.dev` 免费域名国内被墙，国内使用需绑定自定义域名
-- 通信协议：JSON 消息，类型见 `docs/online-mode.md`
-- 重连流程：服务端 `game:state` 消息恢复完整棋盘 → 客户端 `onGameState` 回调同步状态
-- 重启流程：任意一方发送 `restart` → 服务端重置房间 → 广播 `game:restart` 给双方
+- **`makeMove` 获胜时不切换 `currentPlayer`** —— negamax 终端返回 `-(FIVE + depth)`、父节点取负即胜，整条搜索链依赖此约定（`tests/ai-tactics.test.mjs`）
+- **`getValidMoves(radius)` 返回的是已有棋子邻域内的空位，不是全部空位** —— AI 用 radius 2，搜索最后一层收窄到 radius 1（`tests/test.mjs`）
+- **增量评估必须与 `_evaluateBoardFull` 全盘扫描逐点一致**，`_searchMake` / `_searchUndo` 必须配对更新（`tests/ai-incremental.test.mjs`）
+- **置换表 key 必须是增量 Zobrist 哈希，且胜负分（|score| ≥ FIVE）不入表** —— 浅层条目带边界值/深度相关信息；旧的全盘字符串拼接存在歧义碰撞（`'black'+''+'white'` 与 `'black'+'white'` 同值）
+- **评估归一化约定**：四以下棋型按参与子数均摊、一个棋型只计一次分，四/五保持逐子以维持统治力 —— 任何一侧改动都会整体平移棋力平衡（`tests/ai.test.mjs`）
+- **简单模式刻意不走战术预检链**（`findTacticalMove` 仅中等/困难启用），用于保持弱棋力
+- **`screenToBoard` 用 `Math.round` 取最近交叉点**，不是 `Math.floor`
+- **在线 `game:restart` 必须逐玩家单发并携带 `color`** —— 重开自动换先后两人颜色互换，广播同一条消息会让一方执错子（`tests/workers-room.test.mjs`、`tests/server-room.test.mjs`）
+- **房间 `players` 的下标是席位，不是颜色** —— 重连回填颜色、断线超时判胜都必须经 `Room.playerColorAt()` / `_playerColor()` 推导，不得写死 `idx === 0 ? "black" : "white"`（`tests/server-room.test.mjs`）
+- **本地服务器与 Workers 是同一套协议的两个实现** —— 改任一侧的 `switch` 分支都要同步另一侧与协议文档（`tests/server-room.test.mjs` 守护本地侧）
+- **OnlineManager 的 `onXxx` 回调只在 `GomokuGame.setupOnlineCallbacks()` 里统一注册**，别处不要直接赋值
+- **`IS_DEV`（`js/game.js` 顶部）提交时保持 `false`**
 
 ## AI 难度
 
-| 难度 | 算法 | 搜索深度 | 说明 |
-|------|------|----------|------|
-| 简单 | 随机 + 位置评分 | - | 从 top5 候选中随机，仅直接取胜/必堵预检 |
-| 中等 | 开局原则 + 战术预检 + Alpha-Beta 剪枝 | 2 | 开局/预检链（VCF/双威胁）+ 归一化评估 |
-| 困难 | 开局原则 + 战术预检 + 迭代加深 Alpha-Beta + 置换表 | ≤9（2 秒时限，实际常完成 4-5 层，剩余时间预算不足整层时提前收尾） | VCF 攻杀/防守（三态+迭代加深）+ 双威胁验证 + Zobrist 置换表 + PVS + 增量评估 + 中心度/急迫度评估 |
+| 难度 | 算法                                               | 搜索深度                          | 说明                                                    |
+| ---- | -------------------------------------------------- | --------------------------------- | ------------------------------------------------------- |
+| 简单 | 随机 + 位置评分                                    | -                                 | 从 top5 候选中随机，仅直接取胜 / 必堵预检               |
+| 中等 | 开局原则 + 战术预检 + Alpha-Beta 剪枝              | 2                                 | 归一化评估，预检链生效                                  |
+| 困难 | 开局原则 + 战术预检 + 迭代加深 Alpha-Beta + 置换表 | ≤9（2 秒时限，实际常完成 4-5 层） | VCF 攻杀/防守、双威胁验证、PVS、增量评估、中心度/急迫度 |
+
+各难度共用的搜索流程、可调常量与调参入口见 `docs/development.md`。
+
+## 在线模式要点
+
+- 客户端 `OnlineManager`（`js/online.js`）↔ 服务端 `server/index.js`（Room 状态机）↔ Workers `workers/room.js`（协议镜像）
+- 消息为 JSON，类型与字段以 `docs/online-mode.md` 的协议表为准（含 `surrender`、换先后的 `color` 语义）
+- 重连靠服务端 `game:state` 全量恢复棋盘；席位与颜色的关系、“为何重开不能广播”记在 `docs/online-mode.md` §约定：座位不等于颜色
+- ⚠️ `*.workers.dev` 免费域名国内被墙，国内使用需绑定自定义域名（方案对比与步骤见 `docs/online-mode.md` §生产部署）
 
 ## 配置
 
-- Prettier 配置：`.prettierrc.json`、`.prettierignore`
-- 代码风格规则：`.claude/rules/`（包含 JS 代码风格、测试规范）
+- Prettier：`.prettierrc.json`、`.prettierignore`
+- 代码风格规则：`.claude/rules/code-style.md`；测试规则：`.claude/rules/testing.md`
+- 运行时配置：`js/config.js`（优先级：`window.__GOMOKO_WS_URL` > `CONFIG.wsUrl` > `location.host`）
 - 自定义命令：`.claude/commands/`（commit、review、check-links）
 
-## 开发指南
+## 改动后的文档维护
 
-- Board 关键方法：`makeMove`/`undo`（支持原地搜索，**获胜时不切换回合**）、`setCellDirect`（走法排序/战术推演用）、`getValidMoves(radius=1)`（返回已有棋子切比雪夫距离 radius 内的空位，**非全部空位**；AI 用 radius 2）、`restoreState`（在线重连用，不保留历史）
-- AI 评分采用 per-stone 机制（每颗棋子独立评估四个方向，含单间隙跳型），评分权重见 `SCORES` 常量，棋型分类见 `classifyLine`
-- 测试覆盖：AI 棋型评估（活三/冲四/不连续/双面/杀棋）见 `tests/ai.test.mjs`；AI 战术（终端符号/跳型/双威胁/VCF 攻杀与防守/三态未知/强制候选）见 `tests/ai-tactics.test.mjs`；增量评估与 Zobrist 键一致性见 `tests/ai-incremental.test.mjs`；自对弈冒烟见 `tests/ai-selfplay.test.mjs`
-- OnlineManager 回调模式：`onXxx` 回调由 `game.js` 的 `setupOnlineCallbacks()` 统一注册
-- 坐标转换：`screenToBoard` 使用 `Math.round` 取最近交叉点（不是 `Math.floor`）
-- 新同学文档：`docs/development.md`（开发指南）、`docs/online-mode.md`（在线对战协议）
+- 架构 / 不变量变化 → 更新本文件（一次，不要抄到别处）
+- 实现细节 / 常量 / 测试覆盖变化 → 更新 `docs/development.md`
+- 协议字段或房间状态变化 → 更新 `docs/online-mode.md`（三处必须同步：协议表、生命周期图、对应实现）
+- 面向使用者的入口或联机方式变化 → 更新 `README.md`

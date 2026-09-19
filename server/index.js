@@ -6,7 +6,8 @@ import { WebSocketServer } from "ws";
 const PORT = process.env.PORT || 8000;
 const BOARD_SIZE = 15;
 const ROOM_TTL = 10 * 60 * 1000; // 10 minutes
-const RECONNECT_TIMEOUT = 30 * 1000; // 30 seconds
+// 断线重连窗口；可用 RECONNECT_TIMEOUT_MS 覆盖（测试用，生产默认 30 秒）
+const RECONNECT_TIMEOUT = Number(process.env.RECONNECT_TIMEOUT_MS) || 30 * 1000; // 30 seconds
 
 const MIME_TYPES = {
   ".html": "text/html",
@@ -97,7 +98,14 @@ class Room {
   }
 
   playerColor(ws) {
-    const idx = this.playerIndex(ws);
+    return this.playerColorAt(this.playerIndex(ws));
+  }
+
+  /**
+   * 槽位对应的实际执子颜色（考虑重开换先）。
+   * 任何“座位 → 颜色”的推导都必须走这里，不得写死 idx 0=black / 1=white。
+   */
+  playerColorAt(idx) {
     let color;
     if (idx === 0) color = "black";
     else if (idx === 1) color = "white";
@@ -244,9 +252,10 @@ function handleMessage(ws, msg) {
         // Reconnect: replace the null slot
         room.players[existingIdx] = ws;
         wsRoomMap.set(ws, room);
+        // 颜色走 playerColor()：槽位含义受 colorSwap 影响，重开换先后不能写死黑/白
         room.send(ws, {
           type: "room:joined",
-          color: existingIdx === 0 ? "black" : "white",
+          color: room.playerColor(ws),
           opponentReady: true,
         });
         const opponent = room.opponentOf(ws);
@@ -415,7 +424,8 @@ function handleDisconnect(ws) {
     room.disconnectTimer = setTimeout(() => {
       if (room.players[idx] === null) {
         room.state = "finished";
-        const winnerColor = idx === 0 ? "white" : "black";
+        // 胜方是留守玩家的**实际**颜色（换先后不等于另一槽位的默认颜色）
+        const winnerColor = room.playerColorAt(1 - idx);
         room.winner = winnerColor;
         room.send(opponent, { type: "game:end", winner: winnerColor, reason: "disconnect" });
         console.log(`Room ${room.code}: player disconnected, ${winnerColor} wins`);

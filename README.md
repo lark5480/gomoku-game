@@ -1,6 +1,7 @@
 # 五子棋游戏
 
-使用 HTML5 Canvas 和原生 JavaScript (ES6+) 实现的 15x15 五子棋游戏，支持双人对战、AI 对战和在线对战。
+HTML5 Canvas + 原生 JavaScript (ES6+) 实现的 15x15 五子棋：双人对战、AI 对战（三种难度）、
+在线对战（WebSocket 房间制，断线重连 + 重开自动换先）、棋谱回放、亮暗主题。
 
 ## 快速开始
 
@@ -11,9 +12,9 @@ npm start
 
 访问 http://localhost:8000/
 
-> 和同事局域网对战：把 `localhost` 换成你的 IP（如 `http://192.168.1.100:8000/`），确保防火墙放行 8000 端口。
+> 和同事在局域网对战：把 `localhost` 换成你的 IP（如 `http://192.168.1.100:8000/`），防火墙放行 8000 端口。
 
-无 Node.js 时可用（仅双人和 AI 模式，无在线对战）：
+没有 Node.js 时也能玩（仅双人 + AI，无在线对战）：
 
 ```bash
 python -m http.server 8000
@@ -22,90 +23,64 @@ python -m http.server 8000
 ## 功能
 
 - **双人对战** — 同屏轮流落子
-- **AI 对战** — 三种难度（简单/中等/困难），Alpha-Beta 搜索 + 置换表
-- **在线对战** — WebSocket 房间制，支持断线重连、重开一局
-- **棋谱回放** — 对局结束后逐步回放，支持 1x/2x/4x 调速
-- AI 智能提示、高亮预览
-- 棋子放置动画、获胜高亮
-- 撤销落子（AI 模式自动撤两步）
-- 响应式设计（桌面/移动端）
+- **AI 对战** — 简单 / 中等 / 困难三档；困难为迭代加深 Alpha-Beta + 置换表 + VCF/双威胁战术预检
+- **在线对战** — 房间码开局，支持断线重连（30 秒窗口）、认输、重开自动换先
+- **棋谱回放** — 对局结束后逐步回放，1x / 2x / 4x 调速
+- **AI 智能提示** 与落子高亮预览
+- **动画反馈** — 棋子放置动画、获胜五连高亮
+- **撤销落子**（AI 模式自动撤两步）
+- **亮/暗主题**，默认跟随系统偏好
+- 响应式设计（桌面 / 移动端）
 
 ## 文档
 
-- [开发指南](docs/development.md) — 架构详解、开发约定、FAQ
-- [在线对战技术文档](docs/online-mode.md) — 通信协议、部署方案
+| 你想做什么                     | 读哪份                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| 只是玩 / 拉人对战              | 本文                                                                    |
+| 改前端代码、调 AI 棋力、写测试 | [docs/development.md](docs/development.md) — 架构详解、约定、调参 FAQ   |
+| 改在线协议、房间逻辑或部署     | [docs/online-mode.md](docs/online-mode.md) — 通信协议、状态机、部署方案 |
+| 你是 AI 编码代理               | [AGENTS.md](AGENTS.md) — 命令、仓库地图、不可破坏的不变量               |
 
 ## 在线对战
 
-游戏自带 WebSocket 服务器，默认跟前端同端口启动。在线对战需要**两台设备都能访问服务端**，有三种方式：
+在线对战需要**两台设备都能访问同一个服务端**。按场景选一条路：
 
-### 局域网（最简单）
+| 场景                     | 方案                                 | 怎么做                                                                          |
+| ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------- |
+| 同一 WiFi / 局域网       | 本机起服务                           | `npm start`，双方访问 `http://你的IP:8000`（放行 8000 端口）                    |
+| 不在同一网络，临时玩一局 | **一键公网通道**                     | 双击 `play-online.bat`：自动起服务 + 开隧道，公网链接直接进剪贴板，粘贴发给朋友 |
+| 想要长期可访问的入口     | Cloudflare Workers（免服务器，免费） | 见 [docs/online-mode.md §方案 A](docs/online-mode.md)（国内需绑定自定义域名）   |
+| 自己的云服务器           | 部署 `server/`                       | 见 [docs/online-mode.md §生产部署](docs/online-mode.md)                         |
 
-同事朋友在同一个 WiFi 下：
-
-```bash
-npm start
-```
-
-访问 `http://你的IP:8000`（如 `http://192.168.1.100:8000`），确保防火墙放行 8000 端口。
-
-### Cloudflare Tunnel（公网对战，免费）
-
-你和朋友不在同一网络时：
-
-```bash
-# 终端 1：启动游戏服务
-npm start
-
-# 终端 2：暴露到公网
-cloudflared tunnel --url http://localhost:8000
-```
-
-拿到 Tunnel 地址（如 `https://xxx.trycloudflare.com`），修改 `js/config.js`：
-
-```js
-wsUrl: "wss://xxx.trycloudflare.com",
-```
-
-改完本地 `npm start` 访问 `localhost:8000` 即可。
-
-> ⚠️ Tunnel 地址每次重启都会变，需要重新配置。不需在线对战时关掉 Tunnel 就行。
-
-### 部署到云服务器
-
-将 `server/` 部署到阿里云/腾讯云等平台，修改 `js/config.js` 指向服务器地址。
+> 手工开隧道的等价命令、`wsUrl` 配置与三种方案的对比统一记录在
+> [docs/online-mode.md](docs/online-mode.md)，本文不重复。本地开发无需任何配置。
 
 ## 项目结构
 
+面向使用者的顶层视图：
+
 ```
 ├── index.html          # 主页面
-├── css/style.css       # 样式
-├── js/
-│   ├── board.js        # 游戏逻辑（Board 类、胜负检测、状态恢复）
-│   ├── game.js         # 主控制器（Canvas 渲染、交互、在线协调）
-│   ├── ai.js           # AI 对战（AIPlayer 类、Alpha-Beta 搜索）
-│   ├── online.js       # 在线管理（OnlineManager 类、WebSocket 通信）
-│   ├── replay.js       # 回放引擎（ReplayPlayer 类、逐步播放）
-│   └── utils.js        # 工具函数与常量
-├── server/
-│   └── index.js        # HTTP + WebSocket 服务器（房间管理、走棋同步）
-├── tests/
-│   ├── test.mjs         # 棋盘逻辑测试（10 项）
-│   └── ai.test.mjs      # AI 棋型评估测试（6 项）
-└── docs/
-    ├── development.md    # 开发指南（架构、约定、FAQ）
-    └── online-mode.md    # 在线对战技术文档
+├── css/                # 样式与主题变量
+├── js/                 # 前端源码（board / ai / game / online / replay / theme / utils / config）
+├── server/             # 本地 HTTP + WebSocket 服务器（房间管理、走子同步）
+├── workers/            # Cloudflare Workers 部署版服务端
+├── tests/              # 自动化测试套件
+├── docs/               # 开发指南、在线对战文档
+└── public/             # ⚠️ 历史构建副本（已 gitignore），非源码，请勿编辑
 ```
+
+逐文件职责与模块依赖见 [AGENTS.md §仓库地图](AGENTS.md)、[docs/development.md §模块依赖](docs/development.md)。
 
 ## 开发
 
 ```bash
-npm start          # 启动服务器（HTTP + WebSocket）
-npm test           # 运行全部测试
-npm run format     # 代码格式化
+npm start          # 启动服务器（HTTP + WebSocket，端口 8000）
+npm test           # 运行全部测试（提交前置条件）
+npm run format     # Prettier 格式化
 ```
 
-新同学建议先阅读 `docs/development.md`。
+新同学建议先读 [docs/development.md](docs/development.md)。
 
 ## 许可证
 
