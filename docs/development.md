@@ -125,12 +125,12 @@ game.js                          server/index.js
 ```
 
 客户端侧的模块分工与回调清单（`setupOnlineLobby` / `setupOnlineCallbacks` / `enterOnlineGameView` 等）
-见 [online-mode.md §客户端模块分工](online-mode.md)；所有 `onXxx` 回调只在 `setupOnlineCallbacks()` 里注册。
+见 [online-mode.md §客户端模块分工](online-mode.md#客户端模块分工)；所有 `onXxx` 回调只在 `setupOnlineCallbacks()` 里注册。
 
 **席位不等于颜色**：`Room.players` 的下标只表示占了哪个坑，实际颜色由 `colorSwap` 决定，
 本地侧集中在 `Room.playerColorAt(idx)`（`playerColor(ws)` 只是先查下标再转发），Workers 侧是
 `_playerColor(room, idx)`。重连回填与断线超时判胜都必须调它们——两处历史上都退回过下标直推。
-规则缘由与回归用例见 [online-mode.md §约定：座位不等于颜色](online-mode.md)。
+规则缘由与回归用例见 [online-mode.md §约定：座位不等于颜色](online-mode.md#约定座位不等于颜色)。
 
 > 测试可用 `RECONNECT_TIMEOUT_MS` 缩短本地服务器的重连窗口（见 `tests/server-room.test.mjs`），生产不设置则保持 30 秒。
 
@@ -151,9 +151,9 @@ game.js                          server/index.js
 
 ### 测试规范
 
-各测试套件的覆盖范围见 [AGENTS.md §开发命令](../AGENTS.md)（单点维护，此处不重复列表）。写新测试时注意：
+各测试套件的覆盖范围见 [AGENTS.md §开发命令](../AGENTS.md#开发命令)（单点维护，此处不重复列表）。写新测试时注意：
 
-- **口径**：一个 `Test N` 块 = 一个用例，块内每条 `✓` 是一条断言；文档里只统计用例数，不写断言条数
+- **口径**：单元套件里一个 `Test N` 块 = 一个用例，块内每条 `✓` 是一条断言；协议/冒烟套件（无 `Test N`，用 `=== 章节 ===`）按场景计数；文档里只统计用例数，不写断言条数
 - **Board**：状态转换 + 边界条件（棋盘边缘、无效输入、重复落子）
 - **AI**：棋型识别正确性要断言“分类 + 参与子数”，不锁定具体分值；搜索类断言要验证搜索后棋盘/历史/增量状态完全复原
 - **战术**：终端分数符号、双威胁竞速、VCF 三态结果（找到 / 证明没有 / 预算截断未知）分开覆盖

@@ -24,6 +24,7 @@ export class OnlineManager {
     this.onChat = null; // (text) => {}
     this.onConnectionChange = null; // (connected) => {}
     this.onGameState = null; // ({grid, currentPlayer, state, winner}) => {}
+    this.onGameRestart = null; // (myColor) => {}
   }
 
   /** Connect to the game server */

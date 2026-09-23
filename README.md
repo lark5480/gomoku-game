@@ -45,12 +45,12 @@ python -m http.server 8000
 
 在线对战需要**两台设备都能访问同一个服务端**。按场景选一条路：
 
-| 场景                     | 方案                                 | 怎么做                                                                          |
-| ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------- |
-| 同一 WiFi / 局域网       | 本机起服务                           | `npm start`，双方访问 `http://你的IP:8000`（放行 8000 端口）                    |
-| 不在同一网络，临时玩一局 | **一键公网通道**                     | 双击 `play-online.bat`：自动起服务 + 开隧道，公网链接直接进剪贴板，粘贴发给朋友 |
-| 想要长期可访问的入口     | Cloudflare Workers（免服务器，免费） | 见 [docs/online-mode.md §方案 A](docs/online-mode.md)（国内需绑定自定义域名）   |
-| 自己的云服务器           | 部署 `server/`                       | 见 [docs/online-mode.md §生产部署](docs/online-mode.md)                         |
+| 场景                     | 方案                                 | 怎么做                                                                               |
+| ------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------ |
+| 同一 WiFi / 局域网       | 本机起服务                           | `npm start`，双方访问 `http://你的IP:8000`（放行 8000 端口）                         |
+| 不在同一网络，临时玩一局 | **一键公网通道**                     | 双击 `play-online.bat`：自动起服务 + 开隧道，公网链接直接进剪贴板，粘贴发给朋友      |
+| 想要长期可访问的入口     | Cloudflare Workers（免服务器，免费） | 见 [docs/online-mode.md §方案 A](docs/online-mode.md#plan-a)（国内需绑定自定义域名） |
+| 自己的云服务器           | 部署 `server/`                       | 见 [docs/online-mode.md §生产部署](docs/online-mode.md#生产部署)                     |
 
 > 手工开隧道的等价命令、`wsUrl` 配置与三种方案的对比统一记录在
 > [docs/online-mode.md](docs/online-mode.md)，本文不重复。本地开发无需任何配置。
@@ -70,7 +70,7 @@ python -m http.server 8000
 └── public/             # ⚠️ 历史构建副本（已 gitignore），非源码，请勿编辑
 ```
 
-逐文件职责与模块依赖见 [AGENTS.md §仓库地图](AGENTS.md)、[docs/development.md §模块依赖](docs/development.md)。
+逐文件职责与模块依赖见 [AGENTS.md §仓库地图](AGENTS.md#仓库地图)、[docs/development.md §模块依赖](docs/development.md#模块依赖)。
 
 ## 开发
 
