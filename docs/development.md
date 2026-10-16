@@ -82,6 +82,9 @@ getMove()
 - **VCF 搜索**（`findVCF`/`_vcf`）：只展开制造冲四/活四的走法，防守方被迫堵成五点；
   用 `setCellDirect` 原地推演；迭代加深（4/8/12/16/20 层）带节点数与时间预算，预算按候选密度缩放；
   结果三态化——找到 / 证明没有 / 未知（`vcfExhausted=true`），防御复检不接受未知结果
+- **试探性落子**（`withSpeculativeMove` / `withSpeculativeMoveOn`）：所有 `setCellDirect` 原地推演
+  （VCF、`scoreMove`、`threatInfoAt` 等）统一包在 `try/finally` 里，推演抛异常时也保证清理棋盘，
+  避免手动配对的 `setCellDirect(x, null)` 被漏掉而污染棋盘状态
 
 评分权重见 `SCORES` 常量，核心思路是**双面评估**：
 
@@ -163,7 +166,7 @@ game.js                          server/index.js
 ### 调试技巧
 
 - `game.js` 顶部有 `IS_DEV` 开关，设为 `true` 启用调试日志（**提交前改回 `false`**）
-- 浏览器控制台可通过 `window.gomokuGame` 访问游戏实例（棋盘、AI 实例、回放器）
+- `IS_DEV = true` 时浏览器控制台可通过 `window.gomokuGame` 访问游戏实例（棋盘、AI 实例、回放器），并开启 `window.__gomokuTestGrid`（E2E 测试钩子，5Hz 镜像棋盘）；生产构建下两者都不挂载
 - 在线模式调试：打开两个浏览器标签页，一个创建房间，另一个加入
 
 ## 常见问题
