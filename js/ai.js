@@ -254,9 +254,9 @@ export class AIPlayer {
   findThreatContestMove(me, opp) {
     const candidates = [];
     for (const move of this.board.getValidMoves(SEARCH_RADIUS)) {
-      this.board.setCellDirect(move.row, move.col, opp);
-      const level = this.maxShapeAt(move.row, move.col, opp);
-      this.board.setCellDirect(move.row, move.col, null);
+      const level = this.withSpeculativeMove(move.row, move.col, opp, () =>
+        this.maxShapeAt(move.row, move.col, opp)
+      );
 
       if (level >= PATTERN_TYPES.indexOf('sleepThree')) candidates.push(move);
     }
@@ -312,9 +312,9 @@ export class AIPlayer {
   countGrowthCells(player) {
     let count = 0;
     for (const move of this.board.getValidMoves(SEARCH_RADIUS)) {
-      this.board.setCellDirect(move.row, move.col, player);
-      const level = this.maxShapeAt(move.row, move.col, player);
-      this.board.setCellDirect(move.row, move.col, null);
+      const level = this.withSpeculativeMove(move.row, move.col, player, () =>
+        this.maxShapeAt(move.row, move.col, player)
+      );
       if (level >= PATTERN_TYPES.indexOf('sleepThree')) count++;
     }
     return count;
@@ -571,11 +571,12 @@ export class AIPlayer {
     };
 
     for (const move of validMoves) {
-      this.board.setCellDirect(move.row, move.col, player);
-      const mine = this.threatInfoAt(move.row, move.col, player);
-      this.board.setCellDirect(move.row, move.col, opponent);
-      const theirs = this.threatInfoAt(move.row, move.col, opponent);
-      this.board.setCellDirect(move.row, move.col, null);
+      const mine = this.withSpeculativeMove(move.row, move.col, player, () =>
+        this.threatInfoAt(move.row, move.col, player)
+      );
+      const theirs = this.withSpeculativeMove(move.row, move.col, opponent, () =>
+        this.threatInfoAt(move.row, move.col, opponent)
+      );
 
       if (mine.five || mine.fours > 0 || mine.liveThrees >= 2) {
         addCell(move.row, move.col);
@@ -802,9 +803,9 @@ export class AIPlayer {
         return null;
       }
 
-      this.board.setCellDirect(move.row, move.col, attacker);
-      const info = this.threatInfoAt(move.row, move.col, attacker);
-      this.board.setCellDirect(move.row, move.col, null);
+      const info = this.withSpeculativeMove(move.row, move.col, attacker, () =>
+        this.threatInfoAt(move.row, move.col, attacker)
+      );
 
       if (info.five) return move;
       // Two or more completion points = unblockable (live four / double four)
@@ -813,11 +814,11 @@ export class AIPlayer {
     }
 
     for (const { move, block } of fourMoves) {
-      this.board.setCellDirect(move.row, move.col, attacker);
-      this.board.setCellDirect(block.row, block.col, defender);
-      const win = this._vcf(attacker, pliesLeft - 2);
-      this.board.setCellDirect(block.row, block.col, null);
-      this.board.setCellDirect(move.row, move.col, null);
+      const win = this.withSpeculativeMove(move.row, move.col, attacker, () =>
+        this.withSpeculativeMove(block.row, block.col, defender, () =>
+          this._vcf(attacker, pliesLeft - 2)
+        )
+      );
       if (win) return move;
     }
 
@@ -839,9 +840,9 @@ export class AIPlayer {
     // never be skipped just because a heuristic ranked them low.
     const forced = new Set();
     for (const move of all) {
-      this.board.setCellDirect(move.row, move.col, attacker);
-      const info = this.threatInfoAt(move.row, move.col, attacker);
-      this.board.setCellDirect(move.row, move.col, null);
+      const info = this.withSpeculativeMove(move.row, move.col, attacker, () =>
+        this.threatInfoAt(move.row, move.col, attacker)
+      );
       if (info.fours > 0 || info.liveThrees > 0) {
         forced.add(move.row + ',' + move.col);
       }
@@ -897,9 +898,9 @@ export class AIPlayer {
     const threatCells = new Set();
 
     for (const move of candidates) {
-      this.board.setCellDirect(move.row, move.col, opponent);
-      const info = this.threatInfoAt(move.row, move.col, opponent);
-      this.board.setCellDirect(move.row, move.col, null);
+      const info = this.withSpeculativeMove(move.row, move.col, opponent, () =>
+        this.threatInfoAt(move.row, move.col, opponent)
+      );
 
       if (info.five) return move; // safety net; must-block runs earlier
       if (info.fours > 0) {
@@ -975,14 +976,11 @@ export class AIPlayer {
     const validMoves = this.board.getValidMoves(SEARCH_RADIUS);
 
     for (const move of validMoves) {
-      this.board.setCellDirect(move.row, move.col, player);
-      const info = this.threatInfoAt(move.row, move.col, player);
-      if (!(info.five || info.fours + info.liveThrees >= 2)) {
-        this.board.setCellDirect(move.row, move.col, null);
-        continue;
-      }
+      const info = this.withSpeculativeMove(move.row, move.col, player, () =>
+        this.threatInfoAt(move.row, move.col, player)
+      );
+      if (!(info.five || info.fours + info.liveThrees >= 2)) continue;
       const ok = opts.verify ? this.verifyDoubleThreat(move.row, move.col, player) : true;
-      this.board.setCellDirect(move.row, move.col, null);
       if (ok) return move;
     }
     return null;
@@ -998,10 +996,10 @@ export class AIPlayer {
    */
   verifyDoubleThreat(row, col, player) {
     const opponent = player === Player.BLACK ? Player.WHITE : Player.BLACK;
-
     for (const reply of this.board.getValidMoves(SEARCH_RADIUS)) {
-      this.board.setCellDirect(reply.row, reply.col, opponent);
-      const oppInfo = this.threatInfoAt(reply.row, reply.col, opponent);
+      const oppInfo = this.withSpeculativeMove(reply.row, reply.col, opponent, () =>
+        this.threatInfoAt(reply.row, reply.col, opponent)
+      );
 
       let refutable = false;
       if (oppInfo.five) {
@@ -1010,7 +1008,6 @@ export class AIPlayer {
         refutable = true;
       }
 
-      this.board.setCellDirect(reply.row, reply.col, null);
       if (refutable) return false;
     }
     return true;
@@ -1023,9 +1020,9 @@ export class AIPlayer {
    */
   hasImmediateFive(player) {
     for (const move of this.board.getValidMoves(SEARCH_RADIUS)) {
-      this.board.setCellDirect(move.row, move.col, player);
-      const info = this.threatInfoAt(move.row, move.col, player);
-      this.board.setCellDirect(move.row, move.col, null);
+      const info = this.withSpeculativeMove(move.row, move.col, player, () =>
+        this.threatInfoAt(move.row, move.col, player)
+      );
       if (info.five) return true;
     }
     return false;
@@ -1038,9 +1035,9 @@ export class AIPlayer {
   findImmediateWin(validMoves) {
     const player = this.board.getCurrentPlayer();
     for (const move of validMoves) {
-      this.board.setCellDirect(move.row, move.col, player);
-      const patterns = this.evaluatePatternsAt(move.row, move.col, player, this.board);
-      this.board.setCellDirect(move.row, move.col, null);
+      const patterns = this.withSpeculativeMove(move.row, move.col, player, () =>
+        this.evaluatePatternsAt(move.row, move.col, player, this.board)
+      );
 
       if (patterns >= SCORES.FIVE) return move;
     }
@@ -1054,13 +1051,22 @@ export class AIPlayer {
   findMustBlock(validMoves) {
     const opponent = this.board.getCurrentPlayer() === Player.BLACK ? Player.WHITE : Player.BLACK;
     for (const move of validMoves) {
-      this.board.setCellDirect(move.row, move.col, opponent);
-      const patterns = this.evaluatePatternsAt(move.row, move.col, opponent, this.board);
-      this.board.setCellDirect(move.row, move.col, null);
+      const patterns = this.withSpeculativeMove(move.row, move.col, opponent, () =>
+        this.evaluatePatternsAt(move.row, move.col, opponent, this.board)
+      );
 
       if (patterns >= SCORES.FIVE) return move;
     }
     return null;
+  }
+
+  withSpeculativeMove(row, col, value, fn) {
+    this.board.setCellDirect(row, col, value);
+    try {
+      return fn();
+    } finally {
+      this.board.setCellDirect(row, col, null);
+    }
   }
 
   /**
@@ -1070,17 +1076,23 @@ export class AIPlayer {
   scoreMove(row, col, player, board) {
     const opponent = player === Player.BLACK ? Player.WHITE : Player.BLACK;
 
-    // Attack: what patterns does this position create for the player?
-    board.setCellDirect(row, col, player);
-    let score = this.evaluatePatternsAt(row, col, player, board);
+    const attack = this.withSpeculativeMoveOn(board, row, col, player, () =>
+      this.evaluatePatternsAt(row, col, player, board)
+    );
+    const defense = this.withSpeculativeMoveOn(board, row, col, opponent, () =>
+      this.evaluatePatternsAt(row, col, opponent, board)
+    );
 
-    // Defense: what patterns would the opponent create if they took this spot?
-    board.setCellDirect(row, col, opponent);
-    score += this.evaluatePatternsAt(row, col, opponent, board);
+    return attack + defense + this.posBonus(row, col);
+  }
 
-    // Clean up
-    board.setCellDirect(row, col, null);
-    return score + this.posBonus(row, col);
+  withSpeculativeMoveOn(board, row, col, value, fn) {
+    board.setCellDirect(row, col, value);
+    try {
+      return fn();
+    } finally {
+      board.setCellDirect(row, col, null);
+    }
   }
 
   /**
@@ -1383,22 +1395,6 @@ export class AIPlayer {
   }
 
   /**
-   * Evaluate position score (kept for compatibility)
-   */
-  evaluatePosition(row, col) {
-    const currentPlayer = this.board.getCurrentPlayer();
-    let score = 0;
-
-    const tempBoard = this.board.clone();
-    tempBoard.grid[row][col] = currentPlayer;
-
-    score = this.evaluatePatternsAt(row, col, currentPlayer, tempBoard);
-
-    tempBoard.grid[row][col] = null;
-    return score;
-  }
-
-  /**
    * Evaluate patterns at a position: total score across the 4 directions.
    * Shapes below rush-four are normalized by their stone count so a shape
    * contributes once, not once per stone; four/five stay per-stone to remain
@@ -1548,37 +1544,5 @@ export class AIPlayer {
       if (endsOpen === 2) consider('liveTwo', [gapIdx], composite);
       else if (endsOpen === 1) consider('sleepTwo', [gapIdx], composite);
     }
-  }
-
-  /**
-   * Evaluate a line and return score (kept for compatibility)
-   */
-  evaluateLineScore(line, player) {
-    const pattern = this.classifyLine(line, player);
-    return pattern ? pattern.score : 0;
-  }
-
-  /**
-   * Get score for pattern (kept for compatibility)
-   */
-  getPatternScore(count, openEnds, isPlayer) {
-    const sign = isPlayer ? 1 : -1;
-
-    if (count >= 5) return sign * SCORES.FIVE;
-    if (count === 4) {
-      if (openEnds === 2) return sign * SCORES.LIVE_FOUR;
-      if (openEnds === 1) return sign * SCORES.RUSH_FOUR;
-    }
-    if (count === 3) {
-      if (openEnds === 2) return sign * SCORES.LIVE_THREE;
-      if (openEnds === 1) return sign * SCORES.SLEEP_THREE;
-    }
-    if (count === 2) {
-      if (openEnds === 2) return sign * SCORES.LIVE_TWO;
-      if (openEnds === 1) return sign * SCORES.SLEEP_TWO;
-    }
-    if (count === 1 && openEnds === 2) return sign * SCORES.ONE;
-
-    return 0;
   }
 }

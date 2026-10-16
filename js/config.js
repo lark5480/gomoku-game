@@ -1,17 +1,8 @@
 /**
  * Game Configuration
  *
- * 本地开发：WebSocket 自动使用 location.host（默认行为，无需修改）
- * 生产部署：
- *   方案一：Cloudflare Workers（推荐，免费）
- *     - 部署 workers/ 到 Cloudflare → 拿到 https://gomoku-server.xxx.workers.dev
- *  方案二：本机 + Cloudflare Tunnel（零成本）
- *     - cloudflared tunnel --url http://localhost:8000
- *  方案三：Render / Railway / Fly.io
- *     - 将 server/ 部署到云平台
- *
  * 配置方式（优先级从高到低）：
- *   1. window.__GOMOKO_WS_URL 全局变量（index.html 中设置）
+ *   1. window.__GOMOKO_WS_URL 全局变量（index.html 中自行设置，页面默认不含此行）
  *   2. 下面 CONFIG.wsUrl
  *   3. 自动使用 location.host（本地开发默认）
  */
@@ -24,3 +15,8 @@ export const CONFIG = {
    */
   wsUrl: null,
 };
+
+// 部署方案详情见 docs/online-mode.md §生产部署（与下表注释保持同步）：
+//   方案 A：Cloudflare Workers（推荐，免费）— 部署 workers/
+//   方案 B：本机 + Cloudflare Tunnel（零成本）— cloudflared tunnel --url http://localhost:8000
+//   方案 C：Zeabur / Render（国内可选）— 将 server/ 部署到云平台

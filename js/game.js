@@ -1284,10 +1284,13 @@ class GomokuGame {
           if (this.online.connected) {
             this.online.createRoom();
             this.showOnlineStatus('正在创建房间...');
-          } else {
+          } else if (Date.now() - start < 10000) {
             setTimeout(waitForConnection, 100);
+          } else {
+            this.showOnlineStatus('连接超时，请检查网络后重试');
           }
         };
+        const start = Date.now();
         waitForConnection();
       });
     }
@@ -1538,10 +1541,13 @@ class GomokuGame {
       const waitForConnection = () => {
         if (this.online.connected) {
           this.online.createRoom();
-        } else {
+        } else if (Date.now() - start < 10000) {
           setTimeout(waitForConnection, 100);
+        } else {
+          this.showOnlineStatus('连接超时，请检查网络后重试');
         }
       };
+      const start = Date.now();
       waitForConnection();
     });
 
@@ -1584,11 +1590,12 @@ document.addEventListener('DOMContentLoaded', () => {
   debugLog('Gomoku game initialized!');
 
   // Make game accessible from console for debugging
-  window.gomokuGame = game;
+  if (IS_DEV) {
+    window.gomokuGame = game;
 
-  // E2E test hook: mirror board grid so tests can assert stone state.
-  // Cheap (15x15 array copy @ 5Hz) and inert for normal gameplay.
-  setInterval(() => {
-    window.__gomokuTestGrid = game.board.grid.map((r) => [...r]);
-  }, 200);
+    // E2E test hook: mirror board grid so tests can assert stone state.
+    setInterval(() => {
+      window.__gomokuTestGrid = game.board.grid.map((r) => [...r]);
+    }, 200);
+  }
 });

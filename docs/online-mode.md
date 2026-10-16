@@ -27,7 +27,7 @@ Cloudflare Workers 部署（`workers/room.js`）实现同一套协议，客户�
 | ----------- | ------------------ | -------------------------------------------------------------------------------------- |
 | `create`    | -                  | 创建新房间（会先离开当前所在房间）                                                     |
 | `join`      | `roomCode: string` | 加入已有房间；房间满但有 `null` 槽位时按重连处理                                       |
-| `move`      | `row, col: number` | 落子（服务端校验轮次与格子占用，非法消息静默丢弃）                                     |
+| `move`      | `row, col: number` | 落子（服务端校验坐标**为整数**且在界内、格子空闲、轮次正确，非法消息静默丢弃）         |
 | `surrender` | -                  | 认输，仅 `playing` 状态有效，对手获胜                                                  |
 | `restart`   | -                  | 请求重开一局（仅 `finished` 状态有效）                                                 |
 | `chat`      | `text: string`     | 发送聊天消息，仅转发给对手（**服务端已实现，客户端 UI 尚未接入**，`game.js` 无调用点） |
@@ -71,6 +71,9 @@ waiting ──双方加入──▶ playing ──┬─ 五连 / 满盘 ──�
 ### 断线检测
 
 - 服务端通过 `ws.on("close")` 检测断线
+- **应用层心跳兜底**：本地服务器每 30 秒 `ws.ping()`，60 秒无 `pong` 主动 `ws.terminate()`——
+  移动网络切换等半开连接下 `close` 事件可能延迟数分钟，心跳让服务端尽快判定断线并进入重连/判胜流程；
+  这是**传输层机制，不是协议消息**，客户端无需改动。Workers 侧由平台 ping/pong 处理，无对应代码
 - 断线玩家在 `room.players` 数组中的位置设为 `null`
 - 启动 30 秒重连计时器
 
@@ -166,6 +169,8 @@ Netlify (静态前端)           WebSocket 服务器
 
 ---
 
+<a id="plan-a"></a>
+
 ### 方案 A：Cloudflare Workers + Durable Objects（已实现，免费）
 
 **零服务器成本。** 代码位于 `workers/`（`index.js` 入口 + `room.js` 房间注册 DO），
@@ -200,7 +205,7 @@ wsUrl: "https://ws.你的域名.com", // 或 https://gomoku-game.你的子域名
 ```
 
 > 填 `https://` 就行，代码里会自动转为 `wss://` WebSocket 地址。
-> 也可不改文件，直接在 `index.html` 设置 `window.__GOMOKO_WS_URL` 临时覆盖。
+> 也可不改文件，直接在 `index.html` 添加一行 `window.__GOMOKO_WS_URL` 临时覆盖（页面默认不含此行）。
 
 #### 本地验证（可选）
 
@@ -220,7 +225,7 @@ npx wrangler dev   # 本地模拟 Worker + Durable Object + WebSocket
 `play-online.bat`** → 自动启动游戏服务（`npm start`）+ 隧道，抓到公网
 链接后**自动复制到剪贴板**，直接粘贴发给朋友；关掉窗口即断开通道。
 
-> 前提：项目根目录放好 `cloudflared.exe`（[下载](https://developers.cloudflare.com/cloudflared/)）。
+> 前提：项目根目录放好 `cloudflared.exe`（[下载](https://github.com/cloudflare/cloudflared/releases/latest)）。
 > 隧道把页面和 WebSocket 一起暴露，朋友直接打开链接即可玩，无需改任何配置。
 
 手动方式（脚本的等价操作）：

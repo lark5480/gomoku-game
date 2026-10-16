@@ -197,6 +197,11 @@ const wsRoomMap = new Map();
 wss.on("connection", (ws) => {
   console.log("WebSocket client connected");
 
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
+
   ws.on("message", (raw) => {
     let msg;
     try {
@@ -217,6 +222,21 @@ wss.on("connection", (ws) => {
     handleDisconnect(ws);
   });
 });
+
+// Heartbeat: ping every 30s, terminate if no pong in 60s
+const HEARTBEAT_INTERVAL = 30 * 1000;
+const heartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) {
+      handleDisconnect(ws);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
+
+wss.on("close", () => clearInterval(heartbeat));
 
 function handleMessage(ws, msg) {
   switch (msg.type) {
@@ -295,7 +315,15 @@ function handleMessage(ws, msg) {
       if (!room || room.state !== "playing") return;
 
       const { row, col } = msg;
-      if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return;
+      if (
+        !Number.isInteger(row) ||
+        !Number.isInteger(col) ||
+        row < 0 ||
+        row >= BOARD_SIZE ||
+        col < 0 ||
+        col >= BOARD_SIZE
+      )
+        return;
       if (room.grid[row][col] !== null) return;
 
       const playerColor = room.playerColor(ws);

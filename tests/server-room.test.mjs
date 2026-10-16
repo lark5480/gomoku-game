@@ -3,12 +3,28 @@
 // offline Workers simulation cannot: the local server's own reconnect path
 // (regression guard for the slot color after a restart swapped the seats).
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8791;
+
+// Pick an OS-assigned free port instead of a fixed one. Windows reserves
+// dynamic ranges (Hyper-V / WSL / Docker) that can cover a hardcoded port and
+// make listen() fail with EACCES — probing port 0 sidesteps any such range.
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+const PORT = await freePort();
 const ENDPOINT = `ws://127.0.0.1:${PORT}/`;
 
 function assert(condition, msg) {

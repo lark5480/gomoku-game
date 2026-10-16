@@ -43,7 +43,7 @@ HTML5 Canvas + 原生 JavaScript (ES6+) 实现的 15x15 五子棋：双人对战
 ## 仓库地图
 
 ```
-├── index.html              # 主页面（引 js/game.js，设 window.__GOMOKO_WS_URL 可临时覆盖服务地址）
+├── index.html              # 主页面（引 js/game.js；可临时设置 window.__GOMOKO_WS_URL 覆盖服务地址，默认不含此行）
 ├── css/style.css           # 响应式样式 + 亮/暗主题变量
 ├── play-online.bat / .ps1  # 联机一键通道：起服务 + 开隧道 + 公网链接进剪贴板（需 cloudflared.exe）
 ├── js/
