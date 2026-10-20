@@ -37,7 +37,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function startServer() {
   const child = spawn(process.execPath, [join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), RECONNECT_TIMEOUT_MS: '400' },
+    env: { ...process.env, PORT: String(PORT), RECONNECT_TIMEOUT_MS: '800' },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = '';
@@ -184,7 +184,51 @@ try {
     'disconnect timeout awards the swapped color of the remaining player'
   );
 
-  [A, D, E].forEach((ws) => ws.close());
+  // 重连必须撤掉上一轮断线留下的判胜计时器，否则"断线 → 重连 → 再断线"会让旧
+  // 计时器先于新一轮到期，把胜方提前判给留守玩家（Workers 侧靠 reconnectDeadline = 0
+  // 处理，这里补本地侧的镜像回归）。时间轴，RECONNECT_TIMEOUT_MS = 800：
+  //   t≈0    P 断线            → 旧截止时刻 t≈800
+  //   t≈400  P2 重连（清掉旧计时器）
+  //   t≈600  P2 再断线         → 新截止时刻 t≈1400
+  //   t≈1050 断言 Q 尚未收到 game:end（旧截止已过、新截止未到）
+  const P = await connect();
+  send(P, { type: 'create' });
+  const room2 = await expectMsg(P, (m) => m.type === 'room:created', 'second room created');
+  const Q = await connect();
+  send(Q, { type: 'join', roomCode: room2.roomCode });
+  await expectMsg(Q, (m) => m.type === 'room:joined', 'second room joined');
+  await expectMsg(P, (m) => m.type === 'game:start', 'second room game:start');
+
+  P.close();
+  await expectMsg(Q, (m) => m.type === 'opponent:disconnect', 'first drop detected');
+  await sleep(400);
+
+  const P2 = await connect();
+  send(P2, { type: 'join', roomCode: room2.roomCode });
+  await expectMsg(P2, (m) => m.type === 'room:joined', 'reconnect before the old deadline');
+  await sleep(200);
+
+  P2.close();
+  await expectMsg(Q, (m) => m.type === 'opponent:disconnect', 'second drop detected');
+  await sleep(450);
+
+  assert(
+    !Q.inbox.some((m) => m.type === 'game:end'),
+    'reconnect cancels the previous disconnect timer (no premature win)'
+  );
+
+  const earlyEnd = await expectMsg(
+    Q,
+    (m) => m.type === 'game:end' && m.reason === 'disconnect',
+    'timeout win after the second drop',
+    6000
+  );
+  assert(
+    earlyEnd.winner === 'white',
+    'second disconnect timeout still awards the win to the remaining player'
+  );
+
+  [A, D, E, Q].forEach((ws) => ws.close());
 } finally {
   server.kill();
 }

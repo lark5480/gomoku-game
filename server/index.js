@@ -1,7 +1,7 @@
-import http from "http";
-import fs from "fs";
-import path from "path";
-import { WebSocketServer } from "ws";
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { WebSocketServer } from 'ws';
 
 const PORT = process.env.PORT || 8000;
 const BOARD_SIZE = 15;
@@ -10,50 +10,50 @@ const ROOM_TTL = 10 * 60 * 1000; // 10 minutes
 const RECONNECT_TIMEOUT = Number(process.env.RECONNECT_TIMEOUT_MS) || 30 * 1000; // 30 seconds
 
 const MIME_TYPES = {
-  ".html": "text/html",
-  ".css": "text/css",
-  ".js": "application/javascript",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
 };
 
 // ==================== Static File Server ====================
 
 const server = http.createServer((req, res) => {
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    res.writeHead(405, { Allow: "GET, HEAD" });
-    res.end("Method Not Allowed");
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { Allow: 'GET, HEAD' });
+    res.end('Method Not Allowed');
     return;
   }
 
-  let filePath = "." + req.url;
-  if (filePath === "./") filePath = "./index.html";
+  let filePath = '.' + req.url;
+  if (filePath === './') filePath = './index.html';
 
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(path.resolve("."))) {
+  if (!resolvedPath.startsWith(path.resolve('.'))) {
     res.writeHead(403);
-    res.end("Forbidden");
+    res.end('Forbidden');
     return;
   }
 
   const extname = path.extname(filePath);
-  const contentType = MIME_TYPES[extname] || "application/octet-stream";
+  const contentType = MIME_TYPES[extname] || 'application/octet-stream';
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      if (err.code === "ENOENT") {
+      if (err.code === 'ENOENT') {
         res.writeHead(404);
-        res.end("File not found");
+        res.end('File not found');
       } else {
         res.writeHead(500);
-        res.end("Server error: " + err.code);
+        res.end('Server error: ' + err.code);
       }
     } else {
-      res.writeHead(200, { "Content-Type": contentType });
-      res.end(content, "utf-8");
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
     }
   });
 });
@@ -64,10 +64,10 @@ const server = http.createServer((req, res) => {
 const rooms = new Map();
 
 function generateRoomCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
   let code;
   do {
-    code = "";
+    code = '';
     for (let i = 0; i < 4; i++) {
       code += chars[Math.floor(Math.random() * chars.length)];
     }
@@ -80,8 +80,8 @@ class Room {
     this.code = code;
     this.players = [hostWs]; // [host, guest]
     this.grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
-    this.currentPlayer = "black"; // black goes first
-    this.state = "waiting"; // waiting | playing | finished
+    this.currentPlayer = 'black'; // black goes first
+    this.state = 'waiting'; // waiting | playing | finished
     this.winner = null;
     this.colorSwap = false; // 重开换先：翻转两名玩家的颜色
     this.createdAt = Date.now();
@@ -107,11 +107,11 @@ class Room {
    */
   playerColorAt(idx) {
     let color;
-    if (idx === 0) color = "black";
-    else if (idx === 1) color = "white";
+    if (idx === 0) color = 'black';
+    else if (idx === 1) color = 'white';
     else return null;
     // colorSwap 为 true 时翻转先后手
-    return this.colorSwap ? (color === "black" ? "white" : "black") : color;
+    return this.colorSwap ? (color === 'black' ? 'white' : 'black') : color;
   }
 
   opponentOf(ws) {
@@ -137,17 +137,24 @@ class Room {
   }
 
   checkWin(row, col, player) {
-    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    const dirs = [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, -1],
+    ];
     for (const [dr, dc] of dirs) {
       let count = 1;
       for (let d = 1; d < 5; d++) {
-        const r = row + dr * d, c = col + dc * d;
+        const r = row + dr * d,
+          c = col + dc * d;
         if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) break;
         if (this.grid[r][c] !== player) break;
         count++;
       }
       for (let d = 1; d < 5; d++) {
-        const r = row - dr * d, c = col - dc * d;
+        const r = row - dr * d,
+          c = col - dc * d;
         if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) break;
         if (this.grid[r][c] !== player) break;
         count++;
@@ -176,7 +183,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [code, room] of rooms) {
     if (now - room.lastActivity > ROOM_TTL) {
-      room.broadcast({ type: "room:closed", reason: "timeout" });
+      room.broadcast({ type: 'room:closed', reason: 'timeout' });
       for (const p of room.players) {
         if (p) p.close();
       }
@@ -194,31 +201,31 @@ const wss = new WebSocketServer({ server });
 /** @type {Map<import('ws').WebSocket, Room>} */
 const wsRoomMap = new Map();
 
-wss.on("connection", (ws) => {
-  console.log("WebSocket client connected");
+wss.on('connection', (ws) => {
+  console.log('WebSocket client connected');
 
   ws.isAlive = true;
-  ws.on("pong", () => {
+  ws.on('pong', () => {
     ws.isAlive = true;
   });
 
-  ws.on("message", (raw) => {
+  ws.on('message', (raw) => {
     let msg;
     try {
       msg = JSON.parse(raw);
     } catch {
-      ws.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
       return;
     }
 
     handleMessage(ws, msg);
   });
 
-  ws.on("close", () => {
+  ws.on('close', () => {
     handleDisconnect(ws);
   });
 
-  ws.on("error", () => {
+  ws.on('error', () => {
     handleDisconnect(ws);
   });
 });
@@ -236,11 +243,11 @@ const heartbeat = setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL);
 
-wss.on("close", () => clearInterval(heartbeat));
+wss.on('close', () => clearInterval(heartbeat));
 
 function handleMessage(ws, msg) {
   switch (msg.type) {
-    case "create": {
+    case 'create': {
       // Close existing room if player was in one
       leaveCurrentRoom(ws);
 
@@ -249,42 +256,49 @@ function handleMessage(ws, msg) {
       rooms.set(code, room);
       wsRoomMap.set(ws, room);
 
-      room.send(ws, { type: "room:created", roomCode: code, color: "black" });
+      room.send(ws, { type: 'room:created', roomCode: code, color: 'black' });
       console.log(`Room ${code} created`);
       break;
     }
 
-    case "join": {
-      const code = (msg.roomCode || "").toUpperCase().trim();
+    case 'join': {
+      const code = (msg.roomCode || '').toUpperCase().trim();
       const room = rooms.get(code);
 
       if (!room) {
-        ws.send(JSON.stringify({ type: "error", message: "房间不存在" }));
+        ws.send(JSON.stringify({ type: 'error', message: '房间不存在' }));
         return;
       }
       if (room.full) {
         // Check if reconnecting
         const existingIdx = room.playerIndex(null); // check for disconnected slot
         if (existingIdx === -1) {
-          ws.send(JSON.stringify({ type: "error", message: "房间已满" }));
+          ws.send(JSON.stringify({ type: 'error', message: '房间已满' }));
           return;
         }
         // Reconnect: replace the null slot
         room.players[existingIdx] = ws;
         wsRoomMap.set(ws, room);
+        // 必须撤掉上一轮断线留下的判胜计时器：它只检查槽位是否为 null，
+        // 若同一槽位再次断线，旧计时器会先于新一轮到期而提前判胜
+        // （Workers 侧对应 room.reconnectDeadline = 0）。
+        if (room.disconnectTimer) {
+          clearTimeout(room.disconnectTimer);
+          room.disconnectTimer = null;
+        }
         // 颜色走 playerColor()：槽位含义受 colorSwap 影响，重开换先后不能写死黑/白
         room.send(ws, {
-          type: "room:joined",
+          type: 'room:joined',
           color: room.playerColor(ws),
           opponentReady: true,
         });
         const opponent = room.opponentOf(ws);
         if (opponent) {
-          room.send(opponent, { type: "opponent:reconnect" });
+          room.send(opponent, { type: 'opponent:reconnect' });
         }
         // Resend game state
         room.send(ws, {
-          type: "game:state",
+          type: 'game:state',
           grid: room.grid,
           currentPlayer: room.currentPlayer,
           state: room.state,
@@ -301,18 +315,18 @@ function handleMessage(ws, msg) {
       wsRoomMap.set(ws, room);
       room.touch();
 
-      room.send(ws, { type: "room:joined", color: "white", opponentReady: true });
+      room.send(ws, { type: 'room:joined', color: 'white', opponentReady: true });
 
       // Both players ready — start game
-      room.state = "playing";
-      room.broadcast({ type: "game:start" });
+      room.state = 'playing';
+      room.broadcast({ type: 'game:start' });
       console.log(`Room ${code} game started`);
       break;
     }
 
-    case "move": {
+    case 'move': {
       const room = wsRoomMap.get(ws);
-      if (!room || room.state !== "playing") return;
+      if (!room || room.state !== 'playing') return;
 
       const { row, col } = msg;
       if (
@@ -328,7 +342,7 @@ function handleMessage(ws, msg) {
 
       const playerColor = room.playerColor(ws);
       if (playerColor !== room.currentPlayer) {
-        room.send(ws, { type: "error", message: "不是你的回合" });
+        room.send(ws, { type: 'error', message: '不是你的回合' });
         return;
       }
 
@@ -337,39 +351,39 @@ function handleMessage(ws, msg) {
       room.touch();
 
       // Broadcast move to both players
-      room.broadcast({ type: "move", row, col, player: playerColor });
+      room.broadcast({ type: 'move', row, col, player: playerColor });
 
       // Check win
       if (room.checkWin(row, col, playerColor)) {
-        room.state = "finished";
+        room.state = 'finished';
         room.winner = playerColor;
-        room.broadcast({ type: "game:end", winner: playerColor });
+        room.broadcast({ type: 'game:end', winner: playerColor });
         console.log(`Room ${room.code}: ${playerColor} wins`);
         return;
       }
 
       // Check draw
       if (room.isBoardFull()) {
-        room.state = "finished";
+        room.state = 'finished';
         room.winner = null;
-        room.broadcast({ type: "game:end", winner: null });
+        room.broadcast({ type: 'game:end', winner: null });
         console.log(`Room ${room.code}: draw`);
         return;
       }
 
       // Switch turn
-      room.currentPlayer = room.currentPlayer === "black" ? "white" : "black";
+      room.currentPlayer = room.currentPlayer === 'black' ? 'white' : 'black';
       break;
     }
 
-    case "surrender": {
+    case 'surrender': {
       const room = wsRoomMap.get(ws);
-      if (!room || room.state !== "playing") return;
+      if (!room || room.state !== 'playing') return;
 
       const playerColor = room.playerColor(ws);
-      const winnerColor = playerColor === "black" ? "white" : "black";
+      const winnerColor = playerColor === 'black' ? 'white' : 'black';
 
-      room.state = "finished";
+      room.state = 'finished';
       room.winner = winnerColor;
       room.touch();
 
@@ -378,22 +392,22 @@ function handleMessage(ws, msg) {
         room.disconnectTimer = null;
       }
 
-      room.broadcast({ type: "game:end", winner: winnerColor, reason: "surrender" });
+      room.broadcast({ type: 'game:end', winner: winnerColor, reason: 'surrender' });
       console.log(`Room ${room.code}: ${playerColor} surrendered, ${winnerColor} wins`);
       break;
     }
 
-    case "restart": {
+    case 'restart': {
       const room = wsRoomMap.get(ws);
-      if (!room || room.state !== "finished") return;
+      if (!room || room.state !== 'finished') return;
 
       // 换先：翻转先后手颜色
       room.colorSwap = !room.colorSwap;
 
       // Reset room state for a new game
       room.grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
-      room.currentPlayer = "black";
-      room.state = "playing";
+      room.currentPlayer = 'black';
+      room.state = 'playing';
       room.winner = null;
       room.touch();
 
@@ -405,19 +419,19 @@ function handleMessage(ws, msg) {
       // 分别告知每位玩家其新颜色（换先后颜色不同，不能广播同一条消息）
       for (const p of room.players) {
         if (p && p.readyState === 1) {
-          room.send(p, { type: "game:restart", color: room.playerColor(p) });
+          room.send(p, { type: 'game:restart', color: room.playerColor(p) });
         }
       }
       console.log(`Room ${room.code}: game restarted (colorSwap: ${room.colorSwap})`);
       break;
     }
 
-    case "chat": {
+    case 'chat': {
       const room = wsRoomMap.get(ws);
       if (!room) return;
       const opponent = room.opponentOf(ws);
       if (opponent) {
-        room.send(opponent, { type: "chat", text: msg.text || "" });
+        room.send(opponent, { type: 'chat', text: msg.text || '' });
       }
       break;
     }
@@ -445,17 +459,17 @@ function handleDisconnect(ws) {
   }
 
   // Notify opponent
-  room.send(opponent, { type: "opponent:disconnect" });
+  room.send(opponent, { type: 'opponent:disconnect' });
 
   // Set reconnect timer — if player doesn't reconnect, opponent wins
-  if (room.state === "playing") {
+  if (room.state === 'playing') {
     room.disconnectTimer = setTimeout(() => {
       if (room.players[idx] === null) {
-        room.state = "finished";
+        room.state = 'finished';
         // 胜方是留守玩家的**实际**颜色（换先后不等于另一槽位的默认颜色）
         const winnerColor = room.playerColorAt(1 - idx);
         room.winner = winnerColor;
-        room.send(opponent, { type: "game:end", winner: winnerColor, reason: "disconnect" });
+        room.send(opponent, { type: 'game:end', winner: winnerColor, reason: 'disconnect' });
         console.log(`Room ${room.code}: player disconnected, ${winnerColor} wins`);
       }
     }, RECONNECT_TIMEOUT);
@@ -475,6 +489,6 @@ function leaveCurrentRoom(ws) {
 server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/`);
   console.log(`WebSocket available at ws://localhost:${PORT}/`);
-  console.log("Open your browser and navigate to the above URL");
-  console.log("Press Ctrl+C to stop the server");
+  console.log('Open your browser and navigate to the above URL');
+  console.log('Press Ctrl+C to stop the server');
 });
