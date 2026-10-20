@@ -3,8 +3,7 @@
  * Supports step-by-step playback with speed control
  */
 
-import { Board } from "./board.js";
-import { BOARD_SIZE, BOARD_PADDING } from "./utils.js";
+import { Board } from './board.js';
 
 export class ReplayPlayer {
   constructor() {

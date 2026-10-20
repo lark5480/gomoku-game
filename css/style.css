@@ -53,7 +53,7 @@
   --space-2xl: 48px;
 
   /* Typography */
-  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -191,10 +191,12 @@ header .subtitle {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 
-[data-theme="light"] .player-icon.white {
+[data-theme='light'] .player-icon.white {
   background: #ffffff;
   border: 2px solid #999999;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .game-status {
@@ -281,12 +283,24 @@ header .subtitle {
   animation: thinkingPulse 1.2s infinite ease-in-out both;
 }
 
-.thinking-dots span:nth-child(1) { animation-delay: -0.24s; }
-.thinking-dots span:nth-child(2) { animation-delay: -0.12s; }
+.thinking-dots span:nth-child(1) {
+  animation-delay: -0.24s;
+}
+.thinking-dots span:nth-child(2) {
+  animation-delay: -0.12s;
+}
 
 @keyframes thinkingPulse {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* ========== Controls ========== */
@@ -381,7 +395,7 @@ header .subtitle {
 }
 
 .instructions li::before {
-  content: "";
+  content: '';
   position: absolute;
   left: 0;
   top: 8px;
@@ -403,9 +417,17 @@ footer {
 
 /* ========== Animations ========== */
 @keyframes placeStone {
-  0% { transform: scale(0.8); opacity: 0; }
-  60% { transform: scale(1.05); }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .stone-animation {
@@ -413,8 +435,13 @@ footer {
 }
 
 @keyframes winPulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.8); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.8);
+  }
 }
 
 .winning-stone {
@@ -844,7 +871,7 @@ footer {
 }
 
 /* ========== Light Theme ========== */
-[data-theme="light"] {
+[data-theme='light'] {
   --bg-primary: #dcdcdc;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
@@ -920,12 +947,12 @@ footer {
 }
 
 .theme-toggle-icon::before {
-  content: "🌙";
+  content: '🌙';
   line-height: 1;
 }
 
-[data-theme="light"] .theme-toggle-icon::before {
-  content: "☀️";
+[data-theme='light'] .theme-toggle-icon::before {
+  content: '☀️';
 }
 
 /* ========== Reduced Motion ========== */

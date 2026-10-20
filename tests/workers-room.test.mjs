@@ -157,8 +157,24 @@ console.log('=== Workers Room Protocol Tests ===\n');
   assert(B2.lastOf('game:state').grid[7][7] === 'black', 'game:state restores board');
   assert(A.has('opponent:reconnect'), 'host notified of reconnect');
 
-  // Reconnect timeout judges a win for the remaining player
+  // Reconnect must disarm the pending deadline — the local mirror of the
+  // server's clearTimeout on its reconnect branch.
   await registry.webSocketClose(B2, 1000, '', true);
+  assert(registry.rooms.get(code).reconnectDeadline > 0, 'second disconnect re-arms the deadline');
+  const B3 = await connect();
+  await send(B3, { type: 'join', roomCode: code });
+  assert(
+    registry.rooms.get(code).reconnectDeadline === 0,
+    'reconnect disarms the previous reconnect deadline'
+  );
+  await registry.alarm();
+  assert(
+    registry.rooms.get(code).state === 'playing',
+    'an alarm right after reconnect judges no win'
+  );
+
+  // Reconnect timeout judges a win for the remaining player
+  await registry.webSocketClose(B3, 1000, '', true);
   registry.rooms.get(code).reconnectDeadline = Date.now() - 1;
   await registry.alarm();
   const dc = A.lastOf('game:end');

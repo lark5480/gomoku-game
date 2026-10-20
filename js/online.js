@@ -3,7 +3,7 @@
  * Handles WebSocket connection, room management, and move synchronization
  */
 
-import { CONFIG } from "./config.js";
+import { CONFIG } from './config.js';
 
 export class OnlineManager {
   constructor() {
@@ -45,25 +45,25 @@ export class OnlineManager {
     const rawUrl =
       window.__GOMOKO_WS_URL ||
       CONFIG.wsUrl ||
-      `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
+      `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
     // 确保协议正确（允许用户填 https:// 自动转 wss://）
-    const wsUrl = rawUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+    const wsUrl = rawUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       this.connected = true;
-      this._notify("onConnectionChange", true);
+      this._notify('onConnectionChange', true);
     };
 
     this.ws.onclose = () => {
       this.connected = false;
       this.inGame = false;
-      this._notify("onConnectionChange", false);
+      this._notify('onConnectionChange', false);
     };
 
     this.ws.onerror = () => {
       this.connected = false;
-      this._notify("onConnectionChange", false);
+      this._notify('onConnectionChange', false);
     };
 
     this.ws.onmessage = (event) => {
@@ -97,99 +97,99 @@ export class OnlineManager {
 
   /** Create a new room */
   createRoom() {
-    this._send({ type: "create" });
+    this._send({ type: 'create' });
   }
 
   /** Join an existing room by code */
   joinRoom(code) {
     this.roomCode = code;
-    this._send({ type: "join", roomCode: code });
+    this._send({ type: 'join', roomCode: code });
   }
 
   /** Send a move to the server */
   sendMove(row, col) {
-    this._send({ type: "move", row, col });
+    this._send({ type: 'move', row, col });
   }
 
   /** Surrender the current game (online mode) */
   sendSurrender() {
-    this._send({ type: "surrender" });
+    this._send({ type: 'surrender' });
   }
 
   /** Request a game restart (online mode) */
   sendRestart() {
-    this._send({ type: "restart" });
+    this._send({ type: 'restart' });
   }
 
   /** Send a chat message */
   sendChat(text) {
-    this._send({ type: "chat", text });
+    this._send({ type: 'chat', text });
   }
 
   _handleMessage(msg) {
     switch (msg.type) {
-      case "room:created":
+      case 'room:created':
         this.roomCode = msg.roomCode;
         this.myColor = msg.color;
-        this._notify("onRoomCreated", msg.roomCode);
+        this._notify('onRoomCreated', msg.roomCode);
         break;
 
-      case "room:joined":
+      case 'room:joined':
         this.myColor = msg.color;
         break;
 
-      case "game:start":
+      case 'game:start':
         this.inGame = true;
-        this._notify("onGameStart", this.myColor);
+        this._notify('onGameStart', this.myColor);
         break;
 
-      case "move":
-        this._notify("onOpponentMove", { row: msg.row, col: msg.col, player: msg.player });
+      case 'move':
+        this._notify('onOpponentMove', { row: msg.row, col: msg.col, player: msg.player });
         break;
 
-      case "game:end":
+      case 'game:end':
         this.inGame = false;
-        this._notify("onGameEnd", { winner: msg.winner, reason: msg.reason });
+        this._notify('onGameEnd', { winner: msg.winner, reason: msg.reason });
         break;
 
-      case "game:state":
-        this._notify("onGameState", msg);
+      case 'game:state':
+        this._notify('onGameState', msg);
         break;
 
-      case "opponent:disconnect":
-        this._notify("onOpponentDisconnect");
+      case 'opponent:disconnect':
+        this._notify('onOpponentDisconnect');
         break;
 
-      case "opponent:reconnect":
-        this._notify("onOpponentReconnect");
+      case 'opponent:reconnect':
+        this._notify('onOpponentReconnect');
         break;
 
-      case "chat":
-        this._notify("onChat", msg.text);
+      case 'chat':
+        this._notify('onChat', msg.text);
         break;
 
-      case "error":
-        this._notify("onError", msg.message);
+      case 'error':
+        this._notify('onError', msg.message);
         break;
 
-      case "game:restart":
+      case 'game:restart':
         this.inGame = true;
         // 换先：服务端告知本局新颜色
-        if (msg.color === "black" || msg.color === "white") {
+        if (msg.color === 'black' || msg.color === 'white') {
           this.myColor = msg.color;
         }
-        this._notify("onGameRestart", this.myColor);
+        this._notify('onGameRestart', this.myColor);
         break;
 
-      case "room:closed":
+      case 'room:closed':
         this.inGame = false;
-        this._notify("onError", "房间已关闭");
+        this._notify('onError', '房间已关闭');
         break;
     }
   }
 
   _notify(callbackName, ...args) {
     const fn = this[callbackName];
-    if (typeof fn === "function") fn(...args);
+    if (typeof fn === 'function') fn(...args);
   }
 }

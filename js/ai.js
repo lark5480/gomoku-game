@@ -444,6 +444,10 @@ export class AIPlayer {
           bestMove = move;
         }
       }
+    } catch (e) {
+      // alphaBeta enforces the shared time budget by throwing SearchTimeout.
+      // Keep the best move found so far instead of failing the whole turn.
+      if (!(e instanceof SearchTimeout)) throw e;
     } finally {
       while (this.board.getMoveHistory().length > savedHistoryLen) {
         this.board.undo();
