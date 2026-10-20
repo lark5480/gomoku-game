@@ -8,21 +8,24 @@
 ### 模块依赖
 
 ```
-config.js ──┐
-utils.js  ←── board.js  ←── ai.js
-    ↓           ↓
-    └──────→ game.js  ←── online.js
-                ↓
-        replay.js / theme.js
+game.js   ──→  board.js / ai.js / online.js / replay.js / theme.js / utils.js
+ai.js     ──→  board.js / utils.js
+board.js  ──→  utils.js
+replay.js ──→  board.js
+online.js ──→  config.js
+theme.js  ──→  （无内部依赖，只读 DOM/CSS 变量）
 ```
 
-- `config.js` — 全局运行时配置（当前只有 `wsUrl`），被 `online.js` 读取
-- `utils.js` — 纯函数，无依赖，被所有模块使用
+> 箭头方向固定为 **A → B 表示 A `import` B**（旧图在同一行里混用过两种方向，`config.js` 也被画成了 `game.js` 的前置依赖）。
+> 逐行内容与 `js/*.js` 顶部的 import 语句一致，改动依赖时以代码为准。
+
+- `config.js` — 全局运行时配置（当前只有 `wsUrl`），**只被 `online.js` 读取**
+- `utils.js` — 纯函数，无内部依赖；只有 `board.js` / `ai.js` / `game.js` 使用它（`online.js`、`theme.js`、`config.js`、`replay.js` 都不 import）
 - `board.js` — 游戏规则引擎，依赖 `utils.js`
-- `ai.js` — AI 对手，依赖 `board.js`（通过 makeMove/undo 原地搜索）
-- `online.js` — WebSocket 管理，不依赖棋盘（只透传坐标与状态）
+- `ai.js` — AI 对手，依赖 `board.js`（通过 makeMove/undo 原地搜索）与 `utils.js`
+- `online.js` — WebSocket 管理，只依赖 `config.js`，不依赖棋盘（只透传坐标与状态）
 - `game.js` — 主控制器，组合所有模块，协调 UI → 逻辑 → 渲染
-- `replay.js` — 回放引擎，独立模块，被 `game.js` 调用
+- `replay.js` — 回放引擎，被 `game.js` 调用，自建临时 `Board` 重建局面
 - `theme.js` — 亮/暗切换与 Canvas 调色板（从 CSS 变量读取，不自带颜色字面量），被 `game.js` 调用
 
 ### Board 类（`js/board.js`）
@@ -36,7 +39,7 @@ utils.js  ←── board.js  ←── ai.js
 | `getValidMoves(radius = 1)`         | 返回**已有棋子切比雪夫距离 radius 内的空位**（非全部 225 个位置）；AI 使用 radius 2 以覆盖跳型点                            |
 | `restoreState(grid, player, state)` | 从服务器数据恢复棋盘（在线重连用），不保留历史                                                                              |
 | `isWinningStone(row, col)`          | 判断某颗棋子是否属于获胜五连                                                                                                |
-| `setCellDirect(row, col, player)`   | 直接设置格子值（供 AI 走法排序用）                                                                                          |
+| `setCellDirect(row, col, player)`   | 直接设置格子值，绕过胜负检测/回合切换/落子历史（AI 的 `withSpeculativeMove` 原地推演与走法排序评分都走这里）                |
 
 ### AI 搜索流程（`js/ai.js`）
 
@@ -95,6 +98,24 @@ getMove()
 评分采用 **per-stone 机制**：每颗棋子独立评估其四个方向（含单间隙跳型），而不是整条窗口累加；
 再叠加中心度与急迫度修正。上面的“归一化”与“均摊”约定都是在这个粒度上做的，
 改动任一侧均摊粒度会整体平移棋力平衡（由 `tests/ai.test.mjs` 守住棋型分类本身）。
+
+### 三档难度的搜索参数
+
+`AGENTS.md` 的 AI 难度表只说算法，数字全部在这里（常量名可在 `js/ai.js` 顶部直接搜索核对）。
+
+| 难度 | 入口            | 根候选                                                                            | 深度                                       | 时间预算                                                                                             |
+| ---- | --------------- | --------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 简单 | `getMoveEasy`   | 按 `evaluatePosition` 降序取前 5（`topCount = min(5, n)`）后随机                  | 不搜索                                     | 无                                                                                                   |
+| 中等 | `getMoveMedium` | 全部 radius-2 候选，按 `scoreMove` 降序，**不截断**                               | 固定 2 层（根落子 + `alphaBeta(depth=1)`） | 共用 `this.timeLimit`，`SearchTimeout` 被 catch 后返回已完成候选的最优手                             |
+| 困难 | `getMoveHard`   | 前 `ROOT_CANDIDATE_LIMIT`（24）个，战术点由 `collectForcedCells` 顶替低分候选保留 | 迭代加深 1 → `MAX_DEPTH`（9）              | `this.timeLimit`（2000ms）；每层开始前若已耗超 75% 则不再加深；找到必胜分（≥ `SCORES.FIVE`）立即收尾 |
+
+> `alphaBeta` 内部每 4096 个节点检查一次耗时并抛 `SearchTimeout`，`getMoveMedium` 与 `getMoveHard` 都 catch 它
+> （保留已完成搜索的最优手，而不是把异常抛给 `js/game.js`）。正常调参下中等模式深度 2 远碰不到这条分支；
+> 若给中等加深搜索或调大 `SEARCH_CANDIDATE_LIMIT`，时间预算要一并复核。
+
+三档共用 `getMove()` 的前置顺序：直接取胜 → 必堵 → （仅中等/困难）开局原则 → （仅中等/困难）战术预检 → 按难度分派。
+置换表只有 `getMoveHard` 在搜索开始时 `clear()`；`getMoveMedium` 同样会读写这张表（`alphaBeta` 内部）但从不清理，
+靠 Zobrist key 与条目自带 `depth` 的有效性判断避免误用。
 
 ### 在线模式数据流
 
@@ -178,6 +199,8 @@ game.js                          server/index.js
 3. 检查 `npm start` 是否正常运行
 
 ### AI 太强/太弱怎么调
+
+> 三档各自的根候选数、深度上限与时间预算见 [§三档难度的搜索参数](#三档难度的搜索参数)（本文件单点维护，`AGENTS.md` 只留指针）。
 
 修改 `js/ai.js` 中的常量：
 

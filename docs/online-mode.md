@@ -47,7 +47,7 @@ Cloudflare Workers 部署（`workers/room.js`）实现同一套协议，客户�
 | `opponent:reconnect`  | 对手重连           | -                                                                                                   |
 | `chat`                | 对手发来聊天消息   | `text`（同上，暂无 UI 消费 `onChat`）                                                               |
 | `error`               | 操作失败           | `message`                                                                                           |
-| `room:closed`         | 房间被清理         | -                                                                                                   |
+| `room:closed`         | 房间被清理         | `reason: "timeout"`（10 分钟无活动，服务端随后关闭双方连接）                                        |
 
 > `color` 一律指**本局实际执子颜色**，而非固定席位：换先后同一槽位的玩家颜色会翻转。
 
@@ -81,7 +81,11 @@ waiting ──双方加入──▶ playing ──┬─ 五连 / 满盘 ──�
 
 1. 玩家重新连接 WebSocket，发送 `{ type: "join", roomCode }`
 2. 服务端检测 `room.full && room.players` 中有 `null` 槽位
-3. 替换 `null` 槽位为新 WebSocket 连接，并清除重连截止时刻
+3. 替换 `null` 槽位为新 WebSocket 连接，并**撤销上一轮的判胜计时**：本地服务器
+   `clearTimeout(room.disconnectTimer)`，Workers `room.reconnectDeadline = 0`。
+   两侧都必须做——同一槽位再次断线时，旧计时器会先于新一轮到期而提前把胜方判给留守玩家
+   （回归用例：`tests/server-room.test.mjs` 的 `no premature win`、`tests/workers-room.test.mjs` 的
+   `reconnect disarms the previous reconnect deadline`）
 4. 发送 `room:joined`（含该槽位**换算换先后**的实际颜色）+ `game:state`（含完整棋盘状态）
 5. 客户端 `onGameState` 回调恢复棋盘、清除覆盖层、同步玩家颜色
 
@@ -120,6 +124,8 @@ waiting ──双方加入──▶ playing ──┬─ 五连 / 满盘 ──�
 
 ## 认输
 
+- 客户端入口：**在线模式下棋盘工具栏的"撤销"按钮被复用为认输**（`js/game.js` 里 `undoBtn` 的监听按 `gameMode === 'online'` 分流，
+  其余模式仍走 `undoMove()`），没有独立的"认输"按钮
 - 客户端发送 `{ type: "surrender" }`，仅 `playing` 状态有效
 - 服务端把发送方的对色判为胜方：`state = "finished"`、`winner = 对方颜色`
 - 广播 `{ type: "game:end", winner, reason: "surrender" }` 给双方，并清除可能在跑的重连计时器
